@@ -22,18 +22,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = $_POST['id'] ?? '';
     
     if (empty($id)) {
-        $response['message'] = 'Product ID is required';
+        $response['message'] = 'Customer ID is required';
         echo json_encode($response);
         exit();
     }
     
     try {
-        // Units will be deleted automatically due to CASCADE constraint
-        $stmt = $pdo->prepare("DELETE FROM inventory WHERE id = ?");
+        $stmt = $pdo->prepare("DELETE FROM customers WHERE id = ?");
         $stmt->execute([$id]);
         
         $response['success'] = true;
-        $response['message'] = 'Product deleted successfully';
+        $response['message'] = 'Customer deleted successfully';
         
     } catch (PDOException $e) {
         $response['message'] = 'Database error: ' . $e->getMessage();

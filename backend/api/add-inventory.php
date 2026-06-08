@@ -2,8 +2,6 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-date_default_timezone_set('Asia/Manila');
-
 header('Access-Control-Allow-Origin: http://localhost:5173');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
@@ -18,69 +16,52 @@ require_once __DIR__ . '/../config/database.php';
 
 $response = ['success' => false, 'message' => ''];
 
+function saveUploadedFile($file) {
+    $targetDir = __DIR__ . '/../uploads/inventory/';
+    if (!file_exists($targetDir)) mkdir($targetDir, 0777, true);
+    
+    $fileName = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $file['name']);
+    $targetFile = $targetDir . $fileName;
+    
+    if (move_uploaded_file($file['tmp_name'], $targetFile)) {
+        return 'http://localhost:8080/motor-shop/backend/uploads/inventory/' . $fileName;
+    }
+    return null;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sku = $_POST['sku'] ?? '';
     $name = $_POST['name'] ?? '';
+    $brand = $_POST['brand'] ?? '';
     $category = $_POST['category'] ?? '';
     $type = $_POST['type'] ?? '';
-    $color = $_POST['color'] ?? '';
     $price = $_POST['price'] ?? 0;
-    $stock = $_POST['stock'] ?? 0;
-    $image = $_POST['image_url'] ?? '';
-
+    $imageUrl = $_POST['image_url'] ?? '';
     
-    // Handle file upload
-    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
-        $uploadDir = __DIR__ . '/../uploads/';
-        if (!file_exists($uploadDir)) {
-            mkdir($uploadDir, 0777, true);
-        }
-        
-        $fileExtension = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
-        $fileName = time() . '_' . uniqid() . '.' . $fileExtension;
-        $uploadPath = $uploadDir . $fileName;
-        
-        if (move_uploaded_file($_FILES['image']['tmp_name'], $uploadPath)) {
-            $image = 'http://localhost:8080/motor-shop/backend/uploads/' . $fileName;
-        }
-    }
-    
-    if (empty($name) || empty($category) || empty($type) || empty($color)) {
-        $response['message'] = 'Name, category, type and color are required';
+    if (empty($name) || empty($brand) || empty($category) || empty($type) || empty($price)) {
+        $response['message'] = 'Missing required fields';
         echo json_encode($response);
         exit();
     }
     
-    if ($stock == 0) {
-        $status = 'Out of Stock';
-        $statusColor = 'red';
-    } elseif ($stock <= 5) {
-        $status = 'Low Stock';
-        $statusColor = 'amber';
-    } else {
-        $status = 'In Stock';
-        $statusColor = 'green';
+    $imagePath = '';
+    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+        $uploadedPath = saveUploadedFile($_FILES['image']);
+        if ($uploadedPath) $imagePath = $uploadedPath;
+    } elseif (!empty($imageUrl)) {
+        $imagePath = $imageUrl;
     }
     
     try {
-        $stmt = $pdo->prepare("INSERT INTO inventory (sku, name, category, type, color, price, stock, status, statusColor, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$sku, $name, $category, $type, $color, $price, $stock, $status, $statusColor, $image]);
+        $sql = "INSERT INTO inventory (sku, name, brand, category, type, price, image, stock, status, statusColor) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'No Units', 'gray')";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$sku, $name, $brand, $category, $type, $price, $imagePath]);
         
         $response['success'] = true;
-        $response['message'] = 'Item added successfully';
-        $response['item'] = [
-            'id' => $pdo->lastInsertId(),
-            'sku' => $sku,
-            'name' => $name,
-            'category' => $category,
-            'type' => $type,
-            'color' => $color,
-            'price' => $price,
-            'stock' => $stock,
-            'status' => $status,
-            'statusColor' => $statusColor,
-            'image' => $image
-        ];
+        $response['message'] = 'Model added successfully';
+        $response['id'] = $pdo->lastInsertId();
         
     } catch (PDOException $e) {
         $response['message'] = 'Database error: ' . $e->getMessage();
