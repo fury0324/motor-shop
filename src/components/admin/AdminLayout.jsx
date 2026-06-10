@@ -8,6 +8,7 @@ import CustomerList from './CustomerList'
 import CustomerRegistration from './CustomerRegistration'
 import TransactionList from './TransactionList'
 import Transaction from './Transaction'
+import AIAssistant from './AIAssistant'
 
 function AdminLayout({ onLogout }) {
   const [activeMenu, setActiveMenu] = useState('dashboard')
@@ -29,6 +30,11 @@ function AdminLayout({ onLogout }) {
   }
 
   const renderContent = () => {
+    // Handle AI Helper
+    if (activeMenu === 'ai') {
+      return <AIAssistant />
+    }
+
     // Handle Customers submenus
     if (activeMenu === 'customers') {
       if (activeSubMenu === 'add-customer') {
@@ -65,8 +71,6 @@ function AdminLayout({ onLogout }) {
         return <Dashboard />
       case 'users':
         return <UserManagement />
-      case 'ai':
-        return <AIHelper />
       default:
         return <Dashboard />
     }

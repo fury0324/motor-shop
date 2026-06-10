@@ -23,14 +23,7 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
       id: 'inventory', 
       name: 'Inventory', 
       icon: 'inventory', 
-      hasSubmenu: false  // Changed to false since you only have Inventory component
-      // If you want to keep submenus, uncomment below:
-      // hasSubmenu: true,
-      // submenus: [
-      //   { id: 'inventory-list', name: 'Inventory List', icon: 'list_alt' },
-      //   { id: 'add-inventory', name: 'Add Model', icon: 'add_business' },
-      //   { id: 'add-unit', name: 'Add Unit', icon: 'motorcycle' }
-      // ]
+      hasSubmenu: false
     },
     { 
       id: 'transactions', 
@@ -42,7 +35,12 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
         { id: 'new-transaction', name: 'New Transaction', icon: 'add_shopping_cart' }
       ]
     },
-    { id: 'ai', name: 'AI Helper', icon: 'smart_toy', hasSubmenu: false },
+    { 
+      id: 'ai', 
+      name: 'AI Helper', 
+      icon: 'smart_toy', 
+      hasSubmenu: false 
+    },
   ]
 
   // Auto-expand menu when a submenu is active

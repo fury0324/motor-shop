@@ -100,16 +100,13 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
   const isStep3Complete = () => {
     const price = parseFloat(selectedUnit?.selling_price || selectedProduct?.price || 0)
     
-    // Kung walang price, hindi pwedeng mag-complete
     if (price <= 0) return false
     
     if (paymentType === 'Cash') {
       const paid = parseFloat(amountPaid) || 0
-      // Dapat may laman ang amountPaid at hindi zero at >= sa price
       return amountPaid !== '' && paid > 0 && paid >= price
     } else {
       const dp = parseFloat(downPayment) || 0
-      // Dapat may laman ang downPayment at hindi zero at less than price
       return downPayment !== '' && dp > 0 && dp < price
     }
   }
@@ -275,13 +272,11 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
           timer: 3000,
           timerProgressBar: true
         }).then(() => {
-          // Redirect to transaction list after success
           if (onNavigateToTransactionList) {
             onNavigateToTransactionList()
           }
         })
         
-        // Reset form
         setCurrentStep(1)
         setSelectedCustomer(null)
         setSelectedProduct(null)
@@ -319,7 +314,7 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
   const progressPercentage = (currentStep / 4) * 100
 
   return (
-    <div className="p-4 sm:p-5 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-5">
       {/* Back Button */}
       <div className="mb-4">
         <button 

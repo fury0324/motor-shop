@@ -294,7 +294,7 @@ function CustomerRegistration() {
   const progressPercentage = (currentStep / 3) * 100
 
   return (
-    <div className="p-4 sm:p-5 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-5">
       <div className="mb-6">
         <nav className="flex items-center gap-2 text-sm text-[#45464d] mb-2">
           <span>Customer Management</span>
