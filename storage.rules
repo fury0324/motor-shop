@@ -1,0 +1,32 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isStaffOrAbove() {
+      return isSignedIn() && request.auth.token.role in ['admin', 'cashier', 'staff'];
+    }
+
+    function isValidUpload() {
+      return request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+
+    // Customer KYC documents: valid ID, barangay clearance, utility receipt,
+    // proof of income, co-maker ID.
+    match /customers/{customerId}/{fileName} {
+      allow read: if isStaffOrAbove();
+      allow write: if isStaffOrAbove() && isValidUpload();
+    }
+
+    // Inventory (motorcycle model / part) images.
+    match /inventory/{itemId}/{fileName} {
+      allow read: if isStaffOrAbove();
+      allow write: if isStaffOrAbove() && isValidUpload();
+    }
+  }
+}

@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react'
-import Swal from 'sweetalert2'
-import eyeOpenIcon from '../../assets/eye-light.svg'       
+import Swal from '../../lib/swal'
+import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
+import { db } from '../../lib/firebase'
+import { callApi } from '../../lib/api'
+import eyeOpenIcon from '../../assets/eye-light.svg'
 import eyeClosedIcon from '../../assets/eye-closed-light.svg'
+
+const createStaffUser = (payload) => callApi('createStaffUser', payload)
+const updateStaffUser = (payload) => callApi('updateStaffUser', payload)
+const deleteStaffUser = (payload) => callApi('deleteStaffUser', payload)
 
 function UserManagement() {
   const [showModal, setShowModal] = useState(false)
@@ -36,44 +43,20 @@ function UserManagement() {
   const itemsPerPage = 10
 
   useEffect(() => {
-    fetchUsers()
-  }, [])
-
-  const fetchUsers = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/get-users.php')
-      const data = await response.json()
-      if (data.success) {
-        setUsers(data.users)
+    const usersQuery = query(collection(db, 'users'), orderBy('name'))
+    const unsubscribe = onSnapshot(
+      usersQuery,
+      (snapshot) => {
+        setUsers(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })))
+        setIsLoading(false)
+      },
+      (error) => {
+        console.error('Error fetching users:', error)
+        setIsLoading(false)
       }
-    } catch (error) {
-      console.error('Error fetching users:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const sendInvitationEmail = async (email, name, password, role) => {
-    try {
-      const formData = new FormData()
-      formData.append('email', email)
-      formData.append('name', name)
-      formData.append('password', password)
-      formData.append('role', role)
-
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/send-invite.php', {
-        method: 'POST',
-        body: formData
-      })
-
-      const data = await response.json()
-      return data.success
-    } catch (error) {
-      console.error('Error sending invitation:', error)
-      return false
-    }
-  }
+    )
+    return unsubscribe
+  }, [])
 
   const getInitials = (name) => {
     if (!name) return '??'
@@ -135,54 +118,32 @@ function UserManagement() {
     })
 
     try {
-      const formData = new FormData()
-      formData.append('name', newUser.name)
-      formData.append('email', newUser.email)
-      formData.append('password', newUser.password)
-      formData.append('role', newUser.role.toLowerCase())
-
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/create-user.php', {
-        method: 'POST',
-        body: formData
+      await createStaffUser({
+        name: newUser.name,
+        email: newUser.email,
+        password: newUser.password,
+        role: newUser.role.toLowerCase(),
+        sendInvite: newUser.sendInvite,
       })
 
-      const data = await response.json()
+      // Firestore listener above picks up the new user automatically.
+      setShowModal(false)
+      setNewUser({ name: '', email: '', password: '', role: '', sendInvite: false })
 
-      if (data.success) {
-        if (newUser.sendInvite) {
-          Swal.update({
-            title: 'Sending Invitation...',
-            text: 'Sending email invitation to the user.',
-          })
-          await sendInvitationEmail(newUser.email, newUser.name, newUser.password, newUser.role)
-        }
-        
-        await fetchUsers()
-        setShowModal(false)
-        setNewUser({ name: '', email: '', password: '', role: '', sendInvite: false })
-        
-        Swal.fire({
-          icon: 'success',
-          title: 'User Created!',
-          text: `${newUser.name} has been added successfully.${newUser.sendInvite ? ' An invitation email has been sent.' : ''}`,
-          confirmButtonColor: '#3B82F6',
-          timer: 2000,
-          timerProgressBar: true
-        })
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Failed to create user.',
-          confirmButtonColor: '#3B82F6'
-        })
-      }
+      Swal.fire({
+        icon: 'success',
+        title: 'User Created!',
+        text: `${newUser.name} has been added successfully.${newUser.sendInvite ? ' An invitation email has been queued.' : ''}`,
+        confirmButtonColor: '#3B82F6',
+        timer: 2000,
+        timerProgressBar: true
+      })
     } catch (error) {
       console.error('Error:', error)
       Swal.fire({
         icon: 'error',
-        title: 'Connection Error',
-        text: 'Unable to connect to server.',
+        title: 'Error',
+        text: error.message || 'Failed to create user.',
         confirmButtonColor: '#3B82F6'
       })
     } finally {
@@ -230,48 +191,32 @@ function UserManagement() {
     })
 
     try {
-      const formData = new FormData()
-      formData.append('id', editUser.id)
-      formData.append('name', editUser.name)
-      formData.append('email', editUser.email)
-      formData.append('role', editUser.role.toLowerCase())
-      formData.append('status', editUser.status)
-
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/update-user.php', {
-        method: 'POST',
-        body: formData
+      await updateStaffUser({
+        uid: editUser.id,
+        name: editUser.name,
+        email: editUser.email,
+        role: editUser.role.toLowerCase(),
+        status: editUser.status,
       })
 
-      const data = await response.json()
+      setShowEditModal(false)
+      setEditUser({ id: '', name: '', email: '', role: '', status: '' })
+      setSelectedUser(null)
 
-      if (data.success) {
-        await fetchUsers()
-        setShowEditModal(false)
-        setEditUser({ id: '', name: '', email: '', role: '', status: '' })
-        setSelectedUser(null)
-        
-        Swal.fire({
-          icon: 'success',
-          title: 'User Updated!',
-          text: `${editUser.name} has been updated successfully.`,
-          confirmButtonColor: '#3B82F6',
-          timer: 2000,
-          timerProgressBar: true
-        })
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Failed to update user.',
-          confirmButtonColor: '#3B82F6'
-        })
-      }
+      Swal.fire({
+        icon: 'success',
+        title: 'User Updated!',
+        text: `${editUser.name} has been updated successfully.`,
+        confirmButtonColor: '#3B82F6',
+        timer: 2000,
+        timerProgressBar: true
+      })
     } catch (error) {
       console.error('Error:', error)
       Swal.fire({
         icon: 'error',
-        title: 'Connection Error',
-        text: 'Unable to connect to server.',
+        title: 'Error',
+        text: error.message || 'Failed to update user.',
         confirmButtonColor: '#3B82F6'
       })
     } finally {
@@ -302,40 +247,22 @@ function UserManagement() {
         })
 
         try {
-          const formData = new FormData()
-          formData.append('id', user.id)
+          await deleteStaffUser({ uid: user.id })
 
-          const response = await fetch('http://localhost:8080/motor-shop/backend/api/delete-user.php', {
-            method: 'POST',
-            body: formData
+          Swal.fire({
+            icon: 'success',
+            title: 'Deleted!',
+            text: `${user.name} has been deleted.`,
+            confirmButtonColor: '#3B82F6',
+            timer: 2000,
+            timerProgressBar: true
           })
-
-          const data = await response.json()
-
-          if (data.success) {
-            await fetchUsers()
-            Swal.fire({
-              icon: 'success',
-              title: 'Deleted!',
-              text: `${user.name} has been deleted.`,
-              confirmButtonColor: '#3B82F6',
-              timer: 2000,
-              timerProgressBar: true
-            })
-          } else {
-            Swal.fire({
-              icon: 'error',
-              title: 'Error',
-              text: data.message || 'Failed to delete user.',
-              confirmButtonColor: '#3B82F6'
-            })
-          }
         } catch (error) {
           console.error('Error:', error)
           Swal.fire({
             icon: 'error',
-            title: 'Connection Error',
-            text: 'Unable to connect to server.',
+            title: 'Error',
+            text: error.message || 'Failed to delete user.',
             confirmButtonColor: '#3B82F6'
           })
         }
@@ -402,9 +329,7 @@ function UserManagement() {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <button className="p-2 border border-[#c6c6cd] rounded-lg hover:bg-[#dce9ff] transition-colors text-[#45464d]">
-              <span className="material-symbols-outlined text-base">tune</span>
-            </button>
+
           </div>
         </div>
 

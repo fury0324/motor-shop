@@ -1,5 +1,13 @@
+// src/components/admin/CustomerList.jsx
 import { useState, useEffect } from 'react'
-import Swal from 'sweetalert2'
+import Swal from '../../lib/swal'
+import { watchCustomers, updateCustomer, deleteCustomer } from '../../lib/customers'
+
+const formatTimestamp = (value) => {
+  if (!value) return null
+  const date = typeof value?.toDate === 'function' ? value.toDate() : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
 
 function CustomerList() {
   const [customers, setCustomers] = useState([])
@@ -12,108 +20,51 @@ function CustomerList() {
   const [isEditing, setIsEditing] = useState(false)
   const [editForm, setEditForm] = useState({
     id: '',
-    full_name: '',
-    contact_number: '',
+    fullName: '',
+    contactNumber: '',
     email: '',
-    home_address: '',
-    birth_date: '',
-    civil_status: '',
+    homeAddress: '',
+    birthDate: '',
+    civilStatus: '',
     occupation: '',
-    monthly_income: ''
+    monthlyIncome: ''
   })
   const itemsPerPage = 10
 
   const civilStatusOptions = ['Single', 'Married', 'Divorced', 'Widowed']
 
   useEffect(() => {
-    fetchCustomers()
+    const unsubscribe = watchCustomers(
+      (list) => {
+        setCustomers(list)
+        setIsLoading(false)
+      },
+      (error) => {
+        console.error('Error fetching customers:', error)
+        setIsLoading(false)
+      }
+    )
+    return unsubscribe
   }, [])
 
-  const fetchCustomers = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/get-customers.php')
-      const data = await response.json()
-      if (data.success) {
-        setCustomers(data.customers)
-      } else {
-        setCustomers([])
-      }
-    } catch (error) {
-      console.error('Error fetching customers:', error)
-      setCustomers([])
-    } finally {
-      setIsLoading(false)
-    }
+  const handleViewCustomer = (customer) => {
+    setSelectedCustomer(customer)
+    setShowViewModal(true)
   }
 
-  const handleViewCustomer = async (customer) => {
-    setIsLoading(true)
-    try {
-      const response = await fetch(`http://localhost:8080/motor-shop/backend/api/get-customers.php?id=${customer.id}`)
-      const data = await response.json()
-      if (data.success && data.customer) {
-        setSelectedCustomer(data.customer)
-        setShowViewModal(true)
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Failed to load customer details.',
-          confirmButtonColor: '#3B82F6'
-        })
-      }
-    } catch (error) {
-      console.error('Error fetching customer details:', error)
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Unable to connect to server.',
-        confirmButtonColor: '#3B82F6'
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleEditClick = async (customer) => {
-    setIsLoading(true)
-    try {
-      const response = await fetch(`http://localhost:8080/motor-shop/backend/api/get-customers.php?id=${customer.id}`)
-      const data = await response.json()
-      if (data.success && data.customer) {
-        const cust = data.customer
-        setEditForm({
-          id: cust.id,
-          full_name: cust.full_name || '',
-          contact_number: cust.contact_number || '',
-          email: cust.email || '',
-          home_address: cust.home_address || '',
-          birth_date: cust.birth_date || '',
-          civil_status: cust.civil_status || '',
-          occupation: cust.occupation || '',
-          monthly_income: cust.monthly_income || ''
-        })
-        setShowEditModal(true)
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Failed to load customer details.',
-          confirmButtonColor: '#3B82F6'
-        })
-      }
-    } catch (error) {
-      console.error('Error fetching customer details:', error)
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Unable to connect to server.',
-        confirmButtonColor: '#3B82F6'
-      })
-    } finally {
-      setIsLoading(false)
-    }
+  const handleEditClick = (customer) => {
+    setEditForm({
+      id: customer.id,
+      fullName: customer.fullName || '',
+      contactNumber: customer.contactNumber || '',
+      email: customer.email || '',
+      homeAddress: customer.homeAddress || '',
+      birthDate: customer.birthDate || '',
+      civilStatus: customer.civilStatus || '',
+      occupation: customer.occupation || '',
+      monthlyIncome: customer.monthlyIncome ?? ''
+    })
+    setShowEditModal(true)
   }
 
   const handleEditChange = (e) => {
@@ -122,13 +73,12 @@ function CustomerList() {
 
   const handleUpdateCustomer = async (e) => {
     e.preventDefault()
-    
-    if (!editForm.full_name || !editForm.contact_number || !editForm.email || !editForm.home_address) {
+
+    if (!editForm.fullName || !editForm.contactNumber || !editForm.email || !editForm.homeAddress) {
       Swal.fire({
         icon: 'error',
         title: 'Missing Fields',
-        text: 'Please fill in all required fields!',
-        confirmButtonColor: '#3B82F6'
+        text: 'Please fill in all required fields!'
       })
       return
     }
@@ -144,49 +94,32 @@ function CustomerList() {
     })
 
     try {
-      const formData = new FormData()
-      formData.append('id', editForm.id)
-      formData.append('full_name', editForm.full_name)
-      formData.append('contact_number', editForm.contact_number)
-      formData.append('email', editForm.email)
-      formData.append('home_address', editForm.home_address)
-      formData.append('birth_date', editForm.birth_date)
-      formData.append('civil_status', editForm.civil_status)
-      formData.append('occupation', editForm.occupation)
-      formData.append('monthly_income', editForm.monthly_income)
-
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/update-customer.php', {
-        method: 'POST',
-        body: formData
+      await updateCustomer({
+        customerId: editForm.id,
+        fullName: editForm.fullName,
+        contactNumber: editForm.contactNumber,
+        email: editForm.email,
+        homeAddress: editForm.homeAddress,
+        birthDate: editForm.birthDate,
+        civilStatus: editForm.civilStatus,
+        occupation: editForm.occupation,
+        monthlyIncome: editForm.monthlyIncome
       })
 
-      const data = await response.json()
-
-      if (data.success) {
-        await fetchCustomers()
-        setShowEditModal(false)
-        Swal.fire({
-          icon: 'success',
-          title: 'Updated!',
-          text: `${editForm.full_name} has been updated.`,
-          timer: 2000,
-          showConfirmButton: false
-        })
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Failed to update customer.',
-          confirmButtonColor: '#3B82F6'
-        })
-      }
+      setShowEditModal(false)
+      Swal.fire({
+        icon: 'success',
+        title: 'Updated!',
+        text: `${editForm.fullName} has been updated.`,
+        timer: 2000,
+        showConfirmButton: false
+      })
     } catch (error) {
       console.error('Error:', error)
       Swal.fire({
         icon: 'error',
-        title: 'Connection Error',
-        text: 'Unable to connect to server.',
-        confirmButtonColor: '#3B82F6'
+        title: 'Error',
+        text: error.message || 'Failed to update customer.'
       })
     } finally {
       setIsEditing(false)
@@ -196,11 +129,9 @@ function CustomerList() {
   const handleDeleteCustomer = (customer) => {
     Swal.fire({
       title: 'Delete Customer?',
-      text: `Are you sure you want to delete ${customer.full_name}?`,
+      text: `Are you sure you want to delete ${customer.fullName}?`,
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#d33',
-      cancelButtonColor: '#3085d6',
       confirmButtonText: 'Yes, delete',
       cancelButtonText: 'Cancel'
     }).then(async (result) => {
@@ -214,40 +145,20 @@ function CustomerList() {
         })
 
         try {
-          const formData = new FormData()
-          formData.append('id', customer.id)
-
-          const response = await fetch('http://localhost:8080/motor-shop/backend/api/delete-customer.php', {
-            method: 'POST',
-            body: formData
+          await deleteCustomer(customer.id)
+          Swal.fire({
+            icon: 'success',
+            title: 'Deleted!',
+            text: `${customer.fullName} has been deleted.`,
+            timer: 2000,
+            showConfirmButton: false
           })
-
-          const data = await response.json()
-
-          if (data.success) {
-            await fetchCustomers()
-            Swal.fire({
-              icon: 'success',
-              title: 'Deleted!',
-              text: `${customer.full_name} has been deleted.`,
-              timer: 2000,
-              showConfirmButton: false
-            })
-          } else {
-            Swal.fire({
-              icon: 'error',
-              title: 'Error',
-              text: data.message || 'Failed to delete customer.',
-              confirmButtonColor: '#3B82F6'
-            })
-          }
         } catch (error) {
           console.error('Error:', error)
           Swal.fire({
             icon: 'error',
-            title: 'Connection Error',
-            text: 'Unable to connect to server.',
-            confirmButtonColor: '#3B82F6'
+            title: 'Error',
+            text: error.message || 'Failed to delete customer.'
           })
         }
       }
@@ -255,9 +166,9 @@ function CustomerList() {
   }
 
   const filteredCustomers = customers.filter(customer =>
-    customer.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.contact_number?.includes(searchTerm)
+    customer.contactNumber?.includes(searchTerm)
   )
 
   const paginatedCustomers = filteredCustomers.slice(
@@ -285,9 +196,9 @@ function CustomerList() {
         <div className="p-4 border-b border-[#c6c6cd]">
           <div className="relative max-w-sm">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#76777d] text-base">search</span>
-            <input 
-              className="w-full pl-10 pr-4 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:ring-2 focus:ring-black/10 focus:border-black outline-none" 
-              placeholder="Search customers by name, email or contact..." 
+            <input
+              className="w-full pl-10 pr-4 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:ring-2 focus:ring-black/10 focus:border-black outline-none"
+              placeholder="Search customers by name, email or contact..."
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -311,33 +222,40 @@ function CustomerList() {
                     <th className="px-4 py-3 text-xs font-semibold tracking-wide">Contact</th>
                     <th className="px-4 py-3 text-xs font-semibold tracking-wide">Email</th>
                     <th className="px-4 py-3 text-xs font-semibold tracking-wide">Registered Date</th>
+                    <th className="px-4 py-3 text-xs font-semibold tracking-wide">Added By</th>
                     <th className="px-4 py-3 text-xs font-semibold tracking-wide text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#c6c6cd]">
                   {paginatedCustomers.map((customer) => (
                     <tr key={customer.id} className="hover:bg-[#f8f9ff] transition-colors">
-                      <td className="px-4 py-3 font-medium text-sm">{customer.full_name}</td>
-                      <td className="px-4 py-3 text-sm">{customer.contact_number}</td>
+                      <td className="px-4 py-3 font-medium text-sm">{customer.fullName}</td>
+                      <td className="px-4 py-3 text-sm">{customer.contactNumber}</td>
                       <td className="px-4 py-3 text-sm">{customer.email}</td>
-                      <td className="px-4 py-3 text-sm">{customer.registration_date || '—'}</td>
+                      <td className="px-4 py-3 text-sm">{formatTimestamp(customer.createdAt)?.toLocaleDateString() || '—'}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <div>
+                          <p className="text-xs font-medium">{customer.addedBy?.name || 'Unknown'}</p>
+                          <p className="text-[10px] text-[#45464d]">{customer.addedBy?.role || '—'}</p>
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          <button 
+                          <button
                             onClick={() => handleViewCustomer(customer)}
                             className="p-1 hover:text-blue-600 transition-colors"
                             title="View Details"
                           >
                             <span className="material-symbols-outlined text-base">visibility</span>
                           </button>
-                          <button 
+                          <button
                             onClick={() => handleEditClick(customer)}
                             className="p-1 hover:text-black transition-colors"
                             title="Edit Customer"
                           >
                             <span className="material-symbols-outlined text-base">edit</span>
                           </button>
-                          <button 
+                          <button
                             onClick={() => handleDeleteCustomer(customer)}
                             className="p-1 hover:text-red-600 transition-colors"
                             title="Delete Customer"
@@ -358,7 +276,7 @@ function CustomerList() {
                   Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredCustomers.length)} of {filteredCustomers.length} customers
                 </span>
                 <div className="flex items-center gap-1">
-                  <button 
+                  <button
                     onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                     disabled={currentPage === 1}
                     className="p-2 rounded-lg hover:bg-[#dde3eb] disabled:opacity-30 transition-colors"
@@ -390,7 +308,7 @@ function CustomerList() {
                       </button>
                     )
                   })}
-                  <button 
+                  <button
                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                     disabled={currentPage === totalPages}
                     className="p-2 rounded-lg hover:bg-[#dde3eb] disabled:opacity-30 transition-colors"
@@ -415,8 +333,26 @@ function CustomerList() {
                 <span className="material-symbols-outlined text-base">close</span>
               </button>
             </div>
-            
+
             <div className="p-6">
+              {/* Added By Section */}
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-4 pb-2 border-b border-[#c6c6cd]">
+                  <span className="material-symbols-outlined text-black">badge</span>
+                  <h4 className="text-base font-semibold text-[#0b1c30]">Added By</h4>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-[#45464d]">Name</label>
+                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.addedBy?.name || 'Unknown'}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-[#45464d]">Role</label>
+                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.addedBy?.role || '—'}</p>
+                  </div>
+                </div>
+              </div>
+
               {/* Personal Information Section */}
               <div className="mb-6">
                 <div className="flex items-center gap-2 mb-4 pb-2 border-b border-[#c6c6cd]">
@@ -426,11 +362,11 @@ function CustomerList() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-semibold text-[#45464d]">Full Name</label>
-                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.full_name || '—'}</p>
+                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.fullName || '—'}</p>
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-[#45464d]">Contact Number</label>
-                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.contact_number || '—'}</p>
+                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.contactNumber || '—'}</p>
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-[#45464d]">Email Address</label>
@@ -438,11 +374,11 @@ function CustomerList() {
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-[#45464d]">Birth Date</label>
-                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.birth_date || '—'}</p>
+                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.birthDate || '—'}</p>
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-[#45464d]">Civil Status</label>
-                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.civil_status || '—'}</p>
+                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.civilStatus || '—'}</p>
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-[#45464d]">Occupation</label>
@@ -451,12 +387,12 @@ function CustomerList() {
                   <div>
                     <label className="text-xs font-semibold text-[#45464d]">Monthly Income</label>
                     <p className="text-sm text-[#0b1c30] mt-1">
-                      {selectedCustomer.monthly_income ? `₱${parseFloat(selectedCustomer.monthly_income).toLocaleString()}` : '—'}
+                      {selectedCustomer.monthlyIncome ? `₱${parseFloat(selectedCustomer.monthlyIncome).toLocaleString()}` : '—'}
                     </p>
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-xs font-semibold text-[#45464d]">Home Address</label>
-                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.home_address || '—'}</p>
+                    <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.homeAddress || '—'}</p>
                   </div>
                 </div>
               </div>
@@ -468,78 +404,26 @@ function CustomerList() {
                   <h4 className="text-base font-semibold text-[#0b1c30]">Required Documents</h4>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex items-center justify-between p-3 bg-[#f8f9ff] rounded-lg border border-[#c6c6cd]">
-                    <div>
-                      <p className="text-xs font-semibold text-[#0b1c30]">Valid ID</p>
-                      <p className="text-[10px] text-[#45464d]">Passport/UMID/License</p>
+                  {[
+                    ['Valid ID', 'Passport/UMID/License', selectedCustomer.documents?.validIdUrl],
+                    ['Barangay Clearance', 'Issued within 6 months', selectedCustomer.documents?.barangayClearanceUrl],
+                    ['Utility Receipt', 'Meralco/Water/Internet', selectedCustomer.documents?.utilityReceiptUrl],
+                    ['Proof of Income', 'Payslip/COE', selectedCustomer.documents?.proofOfIncomeUrl],
+                  ].map(([title, subtitle, url]) => (
+                    <div key={title} className="flex items-center justify-between p-3 bg-[#f8f9ff] rounded-lg border border-[#c6c6cd]">
+                      <div>
+                        <p className="text-xs font-semibold text-[#0b1c30]">{title}</p>
+                        <p className="text-[10px] text-[#45464d]">{subtitle}</p>
+                      </div>
+                      {url ? (
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-xs font-semibold hover:underline">
+                          View Document
+                        </a>
+                      ) : (
+                        <span className="text-gray-400 text-xs">Not uploaded</span>
+                      )}
                     </div>
-                    {selectedCustomer.valid_id_path ? (
-                      <a 
-                        href={selectedCustomer.valid_id_path} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 text-xs font-semibold hover:underline"
-                      >
-                        View Document
-                      </a>
-                    ) : (
-                      <span className="text-gray-400 text-xs">Not uploaded</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-[#f8f9ff] rounded-lg border border-[#c6c6cd]">
-                    <div>
-                      <p className="text-xs font-semibold text-[#0b1c30]">Barangay Clearance</p>
-                      <p className="text-[10px] text-[#45464d]">Issued within 6 months</p>
-                    </div>
-                    {selectedCustomer.barangay_clearance_path ? (
-                      <a 
-                        href={selectedCustomer.barangay_clearance_path} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 text-xs font-semibold hover:underline"
-                      >
-                        View Document
-                      </a>
-                    ) : (
-                      <span className="text-gray-400 text-xs">Not uploaded</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-[#f8f9ff] rounded-lg border border-[#c6c6cd]">
-                    <div>
-                      <p className="text-xs font-semibold text-[#0b1c30]">Utility Receipt</p>
-                      <p className="text-[10px] text-[#45464d]">Meralco/Water/Internet</p>
-                    </div>
-                    {selectedCustomer.utility_receipt_path ? (
-                      <a 
-                        href={selectedCustomer.utility_receipt_path} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 text-xs font-semibold hover:underline"
-                      >
-                        View Document
-                      </a>
-                    ) : (
-                      <span className="text-gray-400 text-xs">Not uploaded</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-[#f8f9ff] rounded-lg border border-[#c6c6cd]">
-                    <div>
-                      <p className="text-xs font-semibold text-[#0b1c30]">Proof of Income</p>
-                      <p className="text-[10px] text-[#45464d]">Payslip/COE</p>
-                    </div>
-                    {selectedCustomer.proof_of_income_path ? (
-                      <a 
-                        href={selectedCustomer.proof_of_income_path} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 text-xs font-semibold hover:underline"
-                      >
-                        View Document
-                      </a>
-                    ) : (
-                      <span className="text-gray-400 text-xs">Not uploaded</span>
-                    )}
-                  </div>
+                  ))}
                 </div>
               </div>
 
@@ -549,36 +433,31 @@ function CustomerList() {
                   <span className="material-symbols-outlined text-black">handshake</span>
                   <h4 className="text-base font-semibold text-[#0b1c30]">Co-Maker Information</h4>
                 </div>
-                {selectedCustomer.co_maker_name ? (
+                {selectedCustomer.coMaker?.name ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-semibold text-[#45464d]">Co-Maker Name</label>
-                      <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.co_maker_name}</p>
+                      <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.coMaker.name}</p>
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-[#45464d]">Co-Maker Contact</label>
-                      <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.co_maker_contact || '—'}</p>
+                      <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.coMaker.contact || '—'}</p>
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-[#45464d]">Relationship</label>
-                      <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.co_maker_relationship || '—'}</p>
+                      <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.coMaker.relationship || '—'}</p>
                     </div>
                     <div className="md:col-span-2">
                       <label className="text-xs font-semibold text-[#45464d]">Co-Maker Address</label>
-                      <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.co_maker_address || '—'}</p>
+                      <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.coMaker.address || '—'}</p>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-[#f8f9ff] rounded-lg border border-[#c6c6cd]">
                       <div>
                         <p className="text-xs font-semibold text-[#0b1c30]">Co-Maker Valid ID</p>
                         <p className="text-[10px] text-[#45464d]">Passport/UMID/Driver's License</p>
                       </div>
-                      {selectedCustomer.co_maker_id_path ? (
-                        <a 
-                          href={selectedCustomer.co_maker_id_path} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-600 text-xs font-semibold hover:underline"
-                        >
+                      {selectedCustomer.coMaker.idUrl ? (
+                        <a href={selectedCustomer.coMaker.idUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-xs font-semibold hover:underline">
                           View Document
                         </a>
                       ) : (
@@ -601,14 +480,14 @@ function CustomerList() {
                   <div>
                     <label className="text-xs font-semibold text-[#45464d]">Date Registered</label>
                     <p className="text-sm text-[#0b1c30] mt-1">
-                      {selectedCustomer.created_at ? new Date(selectedCustomer.created_at).toLocaleString() : '—'}
+                      {formatTimestamp(selectedCustomer.createdAt)?.toLocaleString() || '—'}
                     </p>
                   </div>
-                  {selectedCustomer.updated_at && selectedCustomer.updated_at !== selectedCustomer.created_at && (
+                  {formatTimestamp(selectedCustomer.updatedAt) && (
                     <div>
                       <label className="text-xs font-semibold text-[#45464d]">Last Updated</label>
                       <p className="text-sm text-[#0b1c30] mt-1">
-                        {new Date(selectedCustomer.updated_at).toLocaleString()}
+                        {formatTimestamp(selectedCustomer.updatedAt).toLocaleString()}
                       </p>
                     </div>
                   )}
@@ -617,7 +496,7 @@ function CustomerList() {
             </div>
 
             <div className="p-4 bg-[#f8f9ff] border-t border-[#c6c6cd] flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setShowViewModal(false)}
                 className="px-4 py-2 text-xs font-semibold tracking-wide bg-black text-white rounded-lg shadow-sm hover:opacity-90 transition-opacity"
               >
@@ -639,7 +518,7 @@ function CustomerList() {
                 <span className="material-symbols-outlined text-base">close</span>
               </button>
             </div>
-            
+
             {isEditing ? (
               <div className="p-12 flex flex-col items-center justify-center">
                 <div className="relative">
@@ -653,12 +532,12 @@ function CustomerList() {
               <form onSubmit={handleUpdateCustomer} className="p-6 flex flex-col gap-4 max-h-[calc(90vh-80px)] overflow-y-auto">
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-semibold tracking-wide text-[#45464d]">Full Name *</label>
-                  <input 
-                    name="full_name"
-                    className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all" 
-                    placeholder="e.g. Juan Dela Cruz" 
+                  <input
+                    name="fullName"
+                    className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all"
+                    placeholder="e.g. Juan Dela Cruz"
                     type="text"
-                    value={editForm.full_name}
+                    value={editForm.fullName}
                     onChange={handleEditChange}
                     required
                   />
@@ -666,22 +545,22 @@ function CustomerList() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-semibold tracking-wide text-[#45464d]">Contact Number *</label>
-                    <input 
-                      name="contact_number"
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
-                      placeholder="e.g. 09123456789" 
+                    <input
+                      name="contactNumber"
+                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none"
+                      placeholder="e.g. 09123456789"
                       type="tel"
-                      value={editForm.contact_number}
+                      value={editForm.contactNumber}
                       onChange={handleEditChange}
                       required
                     />
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-semibold tracking-wide text-[#45464d]">Email Address *</label>
-                    <input 
+                    <input
                       name="email"
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
-                      placeholder="e.g. juan@example.com" 
+                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none"
+                      placeholder="e.g. juan@example.com"
                       type="email"
                       value={editForm.email}
                       onChange={handleEditChange}
@@ -692,20 +571,20 @@ function CustomerList() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-semibold tracking-wide text-[#45464d]">Birth Date</label>
-                    <input 
-                      name="birth_date"
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
+                    <input
+                      name="birthDate"
+                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none"
                       type="date"
-                      value={editForm.birth_date}
+                      value={editForm.birthDate}
                       onChange={handleEditChange}
                     />
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-semibold tracking-wide text-[#45464d]">Civil Status</label>
-                    <select 
-                      name="civil_status"
+                    <select
+                      name="civilStatus"
                       className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none bg-white"
-                      value={editForm.civil_status}
+                      value={editForm.civilStatus}
                       onChange={handleEditChange}
                     >
                       <option value="">Select status...</option>
@@ -718,9 +597,9 @@ function CustomerList() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-semibold tracking-wide text-[#45464d]">Occupation</label>
-                    <input 
+                    <input
                       name="occupation"
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
+                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none"
                       placeholder="e.g. Software Engineer"
                       type="text"
                       value={editForm.occupation}
@@ -729,24 +608,24 @@ function CustomerList() {
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-semibold tracking-wide text-[#45464d]">Monthly Income (₱)</label>
-                    <input 
-                      name="monthly_income"
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
+                    <input
+                      name="monthlyIncome"
+                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none"
                       placeholder="e.g. 50000"
                       type="number"
-                      value={editForm.monthly_income}
+                      value={editForm.monthlyIncome}
                       onChange={handleEditChange}
                     />
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-semibold tracking-wide text-[#45464d]">Complete Home Address *</label>
-                  <textarea 
-                    name="home_address"
-                    className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
+                  <textarea
+                    name="homeAddress"
+                    className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none"
                     placeholder="Street, Barangay, City, Province"
                     rows="3"
-                    value={editForm.home_address}
+                    value={editForm.homeAddress}
                     onChange={handleEditChange}
                     required
                   />
@@ -756,9 +635,9 @@ function CustomerList() {
                   <button type="button" onClick={() => setShowEditModal(false)} className="px-4 py-2 text-xs font-semibold tracking-wide text-[#0b1c30] hover:bg-[#eff4ff] rounded-lg transition-colors">
                     Cancel
                   </button>
-                  <button 
-                    type="submit" 
-                    disabled={isEditing} 
+                  <button
+                    type="submit"
+                    disabled={isEditing}
                     className="px-4 py-2 text-xs font-semibold tracking-wide bg-black text-white rounded-lg shadow-sm hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-50"
                   >
                     Update Customer

@@ -39,6 +39,9 @@ try {
                 u.engine_number,
                 u.chassis_number,
                 u.color,
+                t.processed_by_id,
+                t.processed_by_name,
+                t.processed_by_role,
                 COALESCE(
                     (SELECT SUM(ip.amount_paid) FROM installment_payments ip WHERE ip.transaction_id = t.id AND ip.status = 'Paid'),
                     0
@@ -93,6 +96,12 @@ try {
             $total_paid = floatval($transaction['total_paid_installments']);
             $remaining = floatval($transaction['selling_price']) - floatval($transaction['down_payment']) - $total_paid;
             $transaction['balance'] = max(0, $remaining);
+        }
+        
+        // Ensure processed_by fields have default values
+        if (!isset($transaction['processed_by_name']) || empty($transaction['processed_by_name'])) {
+            $transaction['processed_by_name'] = 'Unknown';
+            $transaction['processed_by_role'] = 'Unknown';
         }
     }
     

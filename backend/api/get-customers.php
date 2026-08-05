@@ -19,15 +19,21 @@ require_once __DIR__ . '/../config/database.php';
 $response = ['success' => false, 'message' => '', 'customers' => []];
 
 $id = $_GET['id'] ?? '';
+$search = $_GET['search'] ?? '';
 
 if (!empty($id)) {
+    // Get single customer with added_by fields
     try {
         $stmt = $pdo->prepare("
             SELECT id, full_name, contact_number, email, home_address, 
                    birth_date, civil_status, occupation, monthly_income,
                    valid_id_path, barangay_clearance_path, utility_receipt_path, proof_of_income_path,
                    co_maker_name, co_maker_contact, co_maker_relationship, co_maker_address, co_maker_id_path,
-                   created_at, updated_at
+                   added_by_name, added_by_role,
+                   created_at,
+                   updated_at,
+                   DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as created_at_formatted,
+                   DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') as updated_at_formatted
             FROM customers 
             WHERE id = ?
         ");
@@ -43,16 +49,34 @@ if (!empty($id)) {
         
     } catch (PDOException $e) {
         $response['message'] = 'Database error: ' . $e->getMessage();
+        error_log('Error in get-customers.php: ' . $e->getMessage());
     }
 } else {
+    // Get all customers with added_by fields
     try {
-        $stmt = $pdo->query("
-            SELECT id, full_name, contact_number, email, 
-                   DATE_FORMAT(created_at, '%Y-%m-%d') as registration_date
-            FROM customers 
-            ORDER BY created_at DESC
-        ");
+        $sql = "SELECT id, full_name, contact_number, email, 
+                       added_by_name, added_by_role,
+                       DATE_FORMAT(created_at, '%Y-%m-%d') as registration_date
+                FROM customers";
         
+        $params = [];
+        
+        if (!empty($search)) {
+            $sql .= " WHERE full_name LIKE :search 
+                      OR email LIKE :search 
+                      OR contact_number LIKE :search";
+            $params[':search'] = "%$search%";
+        }
+        
+        $sql .= " ORDER BY created_at DESC";
+        
+        $stmt = $pdo->prepare($sql);
+        
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        
+        $stmt->execute();
         $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         $response['success'] = true;
@@ -60,6 +84,7 @@ if (!empty($id)) {
         
     } catch (PDOException $e) {
         $response['message'] = 'Database error: ' . $e->getMessage();
+        error_log('Error in get-customers.php: ' . $e->getMessage());
     }
 }
 

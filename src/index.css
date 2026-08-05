@@ -1,2 +1,18 @@
 @import "tailwindcss";
 @import 'material-symbols/outlined.css';
+
+/*
+  Euro Motor brand tokens — dark navy + red accent, modeled on the
+  marketing site's hero/CTA treatment. --color-brand-navy doubles as both
+  the existing body-text ink color and dark surface fill (sidebars, hero
+  panels) so the two "modes" share one consistent brand color instead of
+  introducing an unrelated near-black.
+*/
+@theme {
+  --color-brand-navy: #0b1c30;
+  --color-brand-navy-deep: #060a14;
+  --color-brand-red: #dc2626;
+  --color-brand-red-dark: #b91c1c;
+  --color-brand-red-light: #ef4444;
+  --color-brand-offwhite: #f8f9ff;
+}

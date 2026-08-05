@@ -28,14 +28,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     try {
-        // Units will be deleted automatically due to CASCADE constraint
+        // Start transaction
+        $pdo->beginTransaction();
+        
+        // First, delete any units associated with this inventory item (if table exists)
+        $tableCheck = $pdo->query("SHOW TABLES LIKE 'inventory_units'");
+        if ($tableCheck->rowCount() > 0) {
+            $unitStmt = $pdo->prepare("DELETE FROM inventory_units WHERE inventory_id = ?");
+            $unitStmt->execute([$id]);
+        }
+        
+        // Then delete the inventory item
         $stmt = $pdo->prepare("DELETE FROM inventory WHERE id = ?");
         $stmt->execute([$id]);
+        
+        // Commit transaction
+        $pdo->commit();
         
         $response['success'] = true;
         $response['message'] = 'Product deleted successfully';
         
     } catch (PDOException $e) {
+        // Rollback on error
+        $pdo->rollBack();
         $response['message'] = 'Database error: ' . $e->getMessage();
     }
 }

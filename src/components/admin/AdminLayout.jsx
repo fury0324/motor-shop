@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Routes, Route, useNavigate } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import Dashboard from './Dashboard'
@@ -9,86 +9,40 @@ import CustomerRegistration from './CustomerRegistration'
 import TransactionList from './TransactionList'
 import Transaction from './Transaction'
 import AIAssistant from './AIAssistant'
+import PredictiveDashboard from './PredictiveDashboard'
 
+// Real nested routes replace the old activeMenu/activeSubMenu state machine
+// (which duplicated URL-matching logic here, in Sidebar, and in every
+// "navigate" callback) — the URL is now the single source of truth for what
+// renders, which also fixes back/forward and deep-linking.
 function AdminLayout({ onLogout }) {
-  const [activeMenu, setActiveMenu] = useState('dashboard')
-  const [activeSubMenu, setActiveSubMenu] = useState(null)
-
-  const handleNavigateToAddCustomer = () => {
-    setActiveMenu('customers')
-    setActiveSubMenu('add-customer')
-  }
-
-  const handleNavigateToTransactionList = () => {
-    setActiveMenu('transactions')
-    setActiveSubMenu('transaction-list')
-  }
-
-  const handleNavigateToNewTransaction = () => {
-    setActiveMenu('transactions')
-    setActiveSubMenu('new-transaction')
-  }
-
-  const renderContent = () => {
-    // Handle AI Helper
-    if (activeMenu === 'ai') {
-      return <AIAssistant />
-    }
-
-    // Handle Customers submenus
-    if (activeMenu === 'customers') {
-      if (activeSubMenu === 'add-customer') {
-        return <CustomerRegistration onNavigateToCustomerList={() => {
-          setActiveMenu('customers')
-          setActiveSubMenu('customer-list')
-        }} />
-      }
-      return <CustomerList onNavigateToAddCustomer={handleNavigateToAddCustomer} />
-    }
-
-    // Handle Inventory - just use Inventory component directly
-    if (activeMenu === 'inventory') {
-      return <Inventory />
-    }
-
-    // Handle Transactions submenus
-    if (activeMenu === 'transactions') {
-      if (activeSubMenu === 'transaction-list') {
-        return <TransactionList onNavigateToTransaction={handleNavigateToNewTransaction} />
-      }
-      if (activeSubMenu === 'new-transaction') {
-        return <Transaction 
-          onNavigateToAddCustomer={handleNavigateToAddCustomer} 
-          onNavigateToTransactionList={handleNavigateToTransactionList} 
-        />
-      }
-      return <TransactionList onNavigateToTransaction={handleNavigateToNewTransaction} />
-    }
-
-    // Handle other menus
-    switch (activeMenu) {
-      case 'dashboard':
-        return <Dashboard />
-      case 'users':
-        return <UserManagement />
-      default:
-        return <Dashboard />
-    }
-  }
+  const navigate = useNavigate()
 
   return (
     <div className="min-h-screen bg-[#f8f9ff]">
-      <Sidebar 
-        activeMenu={activeMenu} 
-        activeSubMenu={activeSubMenu}
-        onMenuChange={setActiveMenu} 
-        onSubMenuChange={setActiveSubMenu}
-        onLogout={onLogout} 
-      />
+      <Sidebar onLogout={onLogout} />
       <div className="lg:ml-64 min-h-screen">
         <Header />
         <main className="min-h-[calc(100vh-64px)]">
-          {renderContent()}
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/users" element={<UserManagement />} />
+            <Route path="/customers" element={<CustomerList />} />
+            <Route path="/customers/add" element={<CustomerRegistration />} />
+            <Route path="/inventory" element={<Inventory />} />
+            <Route path="/transactions" element={
+              <TransactionList onNavigateToTransaction={() => navigate('/admin/transactions/new')} />
+            } />
+            <Route path="/transactions/new" element={
+              <Transaction
+                onNavigateToAddCustomer={() => navigate('/admin/customers/add')}
+                onNavigateToTransactionList={() => navigate('/admin/transactions')}
+              />
+            } />
+            <Route path="/predictions" element={<PredictiveDashboard />} />
+            <Route path="/ai" element={<AIAssistant />} />
+          </Routes>
         </main>
       </div>
 

@@ -1,0 +1,19 @@
+name: Keep Render service warm
+
+# Render's free tier sleeps a service after 15 minutes of no traffic, and
+# the first request after that takes 30-60 seconds to wake back up — bad
+# for a cashier mid-sale. This pings the health endpoint every 10 minutes to
+# (mostly) prevent that. Not bulletproof: GitHub Actions schedules aren't
+# guaranteed to the minute and can be delayed under load, so an occasional
+# cold start is still possible.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: curl -sf "${{ secrets.RENDER_API_URL }}/health" -w "\nHTTP %{http_code}\n"

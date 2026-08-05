@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import Swal from 'sweetalert2'
+import Swal from '../../lib/swal'
+import { watchTransaction, watchInstallmentPayments, recordPayment } from '../../lib/transactions'
 
 function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
   const [payments, setPayments] = useState([])
@@ -16,31 +17,30 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
   })
 
   useEffect(() => {
-    fetchPayments()
-  }, [transactionId])
-
-  const fetchPayments = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch(`http://localhost:8080/motor-shop/backend/api/get-installment-payments.php?transaction_id=${transactionId}`)
-      const data = await response.json()
-      if (data.success) {
-        setPayments(data.payments)
-        setTransaction(data.transaction)
-      } else {
-        console.error('Error fetching payments:', data.message)
+    const unsubTransaction = watchTransaction(transactionId, setTransaction, (error) => {
+      console.error('Error fetching transaction:', error)
+    })
+    const unsubPayments = watchInstallmentPayments(
+      transactionId,
+      (list) => {
+        setPayments(list)
+        setIsLoading(false)
+      },
+      (error) => {
+        console.error('Error fetching payments:', error)
+        setIsLoading(false)
       }
-    } catch (error) {
-      console.error('Error:', error)
-    } finally {
-      setIsLoading(false)
+    )
+    return () => {
+      unsubTransaction()
+      unsubPayments()
     }
-  }
+  }, [transactionId])
 
   const handleRecordPayment = (payment) => {
     setSelectedPayment(payment)
     setPaymentForm({
-      amount_paid: payment.amount_due,
+      amount_paid: payment.amountDue - payment.amountPaid,
       payment_date: new Date().toISOString().split('T')[0],
       payment_method: 'Cash',
       reference_no: '',
@@ -51,7 +51,7 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
 
   const handleSubmitPayment = async (e) => {
     e.preventDefault()
-    
+
     Swal.fire({
       title: 'Processing Payment...',
       allowOutsideClick: false,
@@ -60,49 +60,32 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
     })
 
     try {
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/record-payment.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          payment_id: selectedPayment.id,
-          amount_paid: parseFloat(paymentForm.amount_paid),
-          payment_date: paymentForm.payment_date,
-          payment_method: paymentForm.payment_method,
-          reference_no: paymentForm.reference_no,
-          notes: paymentForm.notes
-        })
+      await recordPayment({
+        transactionId,
+        paymentId: selectedPayment.id,
+        amountPaid: parseFloat(paymentForm.amount_paid),
+        paymentDate: paymentForm.payment_date,
+        paymentMethod: paymentForm.payment_method,
+        referenceNo: paymentForm.reference_no,
+        notes: paymentForm.notes
       })
 
-      const data = await response.json()
+      Swal.fire({
+        icon: 'success',
+        title: 'Payment Recorded!',
+        text: `Payment of ₱${parseFloat(paymentForm.amount_paid).toLocaleString()} has been recorded.`,
+        timer: 2000
+      })
+      setShowPaymentModal(false)
 
-      if (data.success) {
-        Swal.fire({
-          icon: 'success',
-          title: 'Payment Recorded!',
-          text: `Payment of ₱${parseFloat(paymentForm.amount_paid).toLocaleString()} has been recorded.`,
-          confirmButtonColor: '#3B82F6',
-          timer: 2000
-        })
-        setShowPaymentModal(false)
-        await fetchPayments()
-        
-        if (onPaymentComplete) {
-          onPaymentComplete()
-        }
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message,
-          confirmButtonColor: '#3B82F6'
-        })
+      if (onPaymentComplete) {
+        onPaymentComplete()
       }
     } catch (error) {
       Swal.fire({
         icon: 'error',
         title: 'Error',
-        text: 'Failed to record payment.',
-        confirmButtonColor: '#3B82F6'
+        text: error.message || 'Failed to record payment.'
       })
     }
   }
@@ -110,27 +93,27 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
  const printPaymentReceipt = (payment) => {
   const printWindow = window.open('', '_blank')
   
-  const paymentNo = payment.payment_no
-  const dueDate = formatDate(payment.due_date)
-  const amountDue = formatCurrency(payment.amount_due)
-  const amountPaid = formatCurrency(payment.amount_paid)
-  const paymentDate = formatDate(payment.payment_date)
-  const paymentMethod = payment.payment_method || 'Cash'
-  const referenceNo = payment.reference_no || 'N/A'
+  const paymentNo = payment.paymentNo
+  const dueDate = formatDate(payment.dueDate)
+  const amountDue = formatCurrency(payment.amountDue)
+  const amountPaid = formatCurrency(payment.amountPaid)
+  const paymentDate = formatDate(payment.paymentDate)
+  const paymentMethod = payment.paymentMethod || 'Cash'
+  const referenceNo = payment.referenceNo || 'N/A'
   const notes = payment.notes || 'N/A'
   
   // Get product details from transaction object
-  const productName = transaction?.product_name || 'N/A'
+  const productName = transaction?.inventoryName || 'N/A'
   const productBrand = transaction?.brand || 'N/A'
-  const engineNumber = transaction?.engine_number || 'N/A'
-  const chassisNumber = transaction?.chassis_number || 'N/A'
+  const engineNumber = transaction?.engineNumber || 'N/A'
+  const chassisNumber = transaction?.chassisNumber || 'N/A'
   const color = transaction?.color || 'N/A'
   
   printWindow.document.write(`
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Payment Receipt - ${transaction?.transaction_no} - Payment #${paymentNo}</title>
+      <title>Payment Receipt - ${transaction?.transactionNo} - Payment #${paymentNo}</title>
       <style>
         * {
           margin: 0;
@@ -236,18 +219,18 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
         
         <div class="receipt-title">
           <h3>PAYMENT RECEIPT</h3>
-          <p>Transaction: ${transaction?.transaction_no} | Payment #${paymentNo}</p>
+          <p>Transaction: ${transaction?.transactionNo} | Payment #${paymentNo}</p>
         </div>
         
         <div class="info-section">
           <h4>Customer Information</h4>
           <div class="info-row">
             <span class="info-label">Name:</span>
-            <span class="info-value">${transaction?.customer_name || 'N/A'}</span>
+            <span class="info-value">${transaction?.customerName || 'N/A'}</span>
           </div>
           <div class="info-row">
             <span class="info-label">Contact:</span>
-            <span class="info-value">${transaction?.contact_number || 'N/A'}</span>
+            <span class="info-value">${transaction?.customerContact || 'N/A'}</span>
           </div>
         </div>
         
@@ -382,8 +365,8 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
           <div>
             <h3 className="text-base sm:text-lg font-semibold">Installment Payments</h3>
             <p className="text-xs sm:text-sm text-[#45464d]">
-              Transaction: {transaction?.transaction_no} | 
-              Remaining Balance: {formatCurrency(transaction?.remaining_balance || 0)}
+              Transaction: {transaction?.transactionNo} | 
+              Remaining Balance: {formatCurrency(transaction?.remainingBalance || 0)}
             </p>
           </div>
           <button onClick={onClose} className="p-1 hover:text-black self-end sm:self-auto">
@@ -405,7 +388,7 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
                 <div key={payment.id} className="bg-white border border-[#c6c6cd] rounded-xl p-4 shadow-sm">
                   <div className="flex justify-between items-start mb-3">
                     <span className="text-sm font-semibold bg-gray-100 px-2 py-1 rounded">
-                      Payment #{payment.payment_no}
+                      Payment #{payment.paymentNo}
                     </span>
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(payment.status)}`}>
                       {payment.status}
@@ -415,27 +398,27 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
                   <div className="space-y-2 mb-3">
                     <div className="flex justify-between">
                       <span className="text-xs text-[#45464d]">Due Date</span>
-                      <span className="text-sm">{formatDate(payment.due_date)}</span>
+                      <span className="text-sm">{formatDate(payment.dueDate)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-xs text-[#45464d]">Amount Due</span>
-                      <span className="text-sm font-semibold">{formatCurrency(payment.amount_due)}</span>
+                      <span className="text-sm font-semibold">{formatCurrency(payment.amountDue)}</span>
                     </div>
-                    {payment.amount_paid > 0 && (
+                    {payment.amountPaid > 0 && (
                       <div className="flex justify-between">
                         <span className="text-xs text-[#45464d]">Amount Paid</span>
-                        <span className="text-sm text-green-600">{formatCurrency(payment.amount_paid)}</span>
+                        <span className="text-sm text-green-600">{formatCurrency(payment.amountPaid)}</span>
                       </div>
                     )}
-                    {payment.payment_date && (
+                    {payment.paymentDate && (
                       <div className="flex justify-between">
                         <span className="text-xs text-[#45464d]">Payment Date</span>
-                        <span className="text-sm">{formatDate(payment.payment_date)}</span>
+                        <span className="text-sm">{formatDate(payment.paymentDate)}</span>
                       </div>
                     )}
                   </div>
                   
-                  {(payment.status === 'Pending' || payment.status === 'Overdue') && (
+                  {(payment.status === 'Pending' || payment.status === 'Overdue' || payment.status === 'Partial') && (
                     <button
                       onClick={() => handleRecordPayment(payment)}
                       className={`w-full py-2 rounded-lg text-sm font-semibold text-white transition-colors ${
@@ -485,13 +468,13 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
                 ) : (
                   payments.map((payment) => (
                     <tr key={payment.id} className="hover:bg-[#f8f9ff]">
-                      <td className="px-4 py-3 text-sm font-medium">{payment.payment_no}</td>
-                      <td className="px-4 py-3 text-sm">{formatDate(payment.due_date)}</td>
+                      <td className="px-4 py-3 text-sm font-medium">{payment.paymentNo}</td>
+                      <td className="px-4 py-3 text-sm">{formatDate(payment.dueDate)}</td>
                       <td className="px-4 py-3 text-right text-sm font-semibold">
-                        {formatCurrency(payment.amount_due)}
+                        {formatCurrency(payment.amountDue)}
                       </td>
                       <td className="px-4 py-3 text-right text-sm">
-                        {payment.amount_paid > 0 ? formatCurrency(payment.amount_paid) : '—'}
+                        {payment.amountPaid > 0 ? formatCurrency(payment.amountPaid) : '—'}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(payment.status)}`}>
@@ -499,11 +482,11 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
-                        {payment.payment_date ? formatDate(payment.payment_date) : '—'}
+                        {payment.paymentDate ? formatDate(payment.paymentDate) : '—'}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          {(payment.status === 'Pending' || payment.status === 'Overdue') && (
+                          {(payment.status === 'Pending' || payment.status === 'Overdue' || payment.status === 'Partial') && (
                             <button
                               onClick={() => handleRecordPayment(payment)}
                               className={`px-3 py-1 rounded-lg text-xs font-semibold text-white transition-colors ${
@@ -539,19 +522,19 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                 <div>
                   <p className="text-xs text-[#45464d]">Total Price</p>
-                  <p className="text-base sm:text-lg font-bold">{formatCurrency(transaction.selling_price)}</p>
+                  <p className="text-base sm:text-lg font-bold">{formatCurrency(transaction.sellingPrice)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#45464d]">Down Payment</p>
-                  <p className="text-base sm:text-lg font-bold">{formatCurrency(transaction.down_payment)}</p>
+                  <p className="text-base sm:text-lg font-bold">{formatCurrency(transaction.downPayment)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#45464d]">Monthly Amortization</p>
-                  <p className="text-base sm:text-lg font-bold">{formatCurrency(transaction.monthly_amount)}</p>
+                  <p className="text-base sm:text-lg font-bold">{formatCurrency(transaction.monthlyAmount)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#45464d]">Remaining Balance</p>
-                  <p className="text-base sm:text-lg font-bold text-orange-600">{formatCurrency(transaction.remaining_balance || 0)}</p>
+                  <p className="text-base sm:text-lg font-bold text-orange-600">{formatCurrency(transaction.remainingBalance || 0)}</p>
                 </div>
               </div>
             </div>
@@ -575,7 +558,7 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
                 <label className="text-xs font-semibold text-[#45464d] mb-1 block">Payment #</label>
                 <input
                   type="text"
-                  value={`Payment ${selectedPayment?.payment_no}`}
+                  value={`Payment ${selectedPayment?.paymentNo}`}
                   disabled
                   className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm bg-[#f8f9ff]"
                 />
@@ -585,7 +568,7 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
                 <label className="text-xs font-semibold text-[#45464d] mb-1 block">Due Date</label>
                 <input
                   type="text"
-                  value={formatDate(selectedPayment?.due_date)}
+                  value={formatDate(selectedPayment?.dueDate)}
                   disabled
                   className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm bg-[#f8f9ff]"
                 />
@@ -595,7 +578,7 @@ function InstallmentPayments({ transactionId, onClose, onPaymentComplete }) {
                 <label className="text-xs font-semibold text-[#45464d] mb-1 block">Amount Due</label>
                 <input
                   type="text"
-                  value={formatCurrency(selectedPayment?.amount_due || 0)}
+                  value={formatCurrency(selectedPayment?.amountDue || 0)}
                   disabled
                   className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm bg-[#f8f9ff] font-semibold"
                 />

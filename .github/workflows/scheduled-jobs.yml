@@ -1,0 +1,38 @@
+name: Scheduled backend jobs
+
+# Replaces Firebase's onSchedule (which required Cloud Scheduler + Blaze) —
+# these two cron triggers hit the Render-hosted API's protected /internal
+# endpoints instead. Requires two repo secrets (Settings > Secrets and
+# variables > Actions):
+#   RENDER_API_URL — e.g. https://euro-motor-shop-api.onrender.com
+#   CRON_SECRET    — must match the server's CRON_SECRET env var exactly
+on:
+  schedule:
+    # 00:30 Asia/Manila (UTC+8) = 16:30 UTC the previous day — flips
+    # Pending installments past their due date to Overdue before the
+    # payment-reminder job runs.
+    - cron: '30 16 * * *'
+    # 08:00 Asia/Manila = 00:00 UTC — sends today's due-payment reminders.
+    - cron: '0 0 * * *'
+  workflow_dispatch: {} # allows manually triggering either job from the Actions tab
+
+jobs:
+  flag-overdue-installments:
+    if: github.event.schedule == '30 16 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call flag-overdue-installments
+        run: |
+          curl -sf -X POST "${{ secrets.RENDER_API_URL }}/internal/flag-overdue-installments" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n"
+
+  send-due-payment-reminders:
+    if: github.event.schedule == '0 0 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call send-due-payment-reminders
+        run: |
+          curl -sf -X POST "${{ secrets.RENDER_API_URL }}/internal/send-due-payment-reminders" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n"

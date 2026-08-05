@@ -1,63 +1,84 @@
-import { useState, useEffect } from 'react'
-import Swal from 'sweetalert2'
+// components/admin/Sidebar.jsx
+import { useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import Swal from '../../lib/swal'
 import logo from '../../assets/euro-logo.png'
 
-function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onLogout }) {
+const MENU_ITEMS = [
+  { id: 'dashboard', name: 'Dashboard', icon: 'dashboard', hasSubmenu: false, path: '/admin/dashboard' },
+  { id: 'users', name: 'User Management', icon: 'group', hasSubmenu: false, path: '/admin/users' },
+  {
+    id: 'customers',
+    name: 'Customers',
+    icon: 'people',
+    hasSubmenu: true,
+    path: '/admin/customers',
+    submenus: [
+      { id: 'customer-list', name: 'Customer List', icon: 'list_alt', path: '/admin/customers' },
+      { id: 'add-customer', name: 'Add Customer', icon: 'person_add', path: '/admin/customers/add' }
+    ]
+  },
+  {
+    id: 'inventory',
+    name: 'Inventory',
+    icon: 'inventory',
+    hasSubmenu: false,
+    path: '/admin/inventory'
+  },
+  {
+    id: 'transactions',
+    name: 'Transactions',
+    icon: 'receipt_long',
+    hasSubmenu: true,
+    path: '/admin/transactions',
+    submenus: [
+      { id: 'transaction-list', name: 'Transaction List', icon: 'list_alt', path: '/admin/transactions' },
+      { id: 'new-transaction', name: 'New Transaction', icon: 'add_shopping_cart', path: '/admin/transactions/new' }
+    ]
+  },
+  {
+    id: 'predictions',
+    name: 'Predictions',
+    icon: 'analytics',
+    hasSubmenu: false,
+    path: '/admin/predictions',
+    badge: 'NEW'
+  },
+  {
+    id: 'ai',
+    name: 'AI Helper',
+    icon: 'smart_toy',
+    hasSubmenu: false,
+    path: '/admin/ai'
+  },
+]
+
+// Flattens MENU_ITEMS into { menuId, subId, path } candidates and picks the
+// longest path that matches the current URL — this replaces what used to be
+// a hand-maintained if/else chain duplicating every route's path here, in
+// AdminLayout, and in every navigation callback.
+function matchActive(pathname) {
+  const candidates = []
+  for (const item of MENU_ITEMS) {
+    if (item.submenus) {
+      for (const sub of item.submenus) candidates.push({ menuId: item.id, subId: sub.id, path: sub.path })
+    } else {
+      candidates.push({ menuId: item.id, subId: null, path: item.path })
+    }
+  }
+  candidates.sort((a, b) => b.path.length - a.path.length)
+  const match = candidates.find((c) => pathname === c.path || pathname.startsWith(`${c.path}/`))
+  return match ? { activeMenu: match.menuId, activeSubMenu: match.subId } : { activeMenu: 'dashboard', activeSubMenu: null }
+}
+
+function Sidebar({ onLogout }) {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [expandedMenus, setExpandedMenus] = useState({})
+  const menuItems = MENU_ITEMS
 
-  const menuItems = [
-    { id: 'dashboard', name: 'Dashboard', icon: 'dashboard', hasSubmenu: false },
-    { id: 'users', name: 'User Management', icon: 'group', hasSubmenu: false },
-    { 
-      id: 'customers', 
-      name: 'Customers', 
-      icon: 'people', 
-      hasSubmenu: true,
-      submenus: [
-        { id: 'customer-list', name: 'Customer List', icon: 'list_alt' },
-        { id: 'add-customer', name: 'Add Customer', icon: 'person_add' }
-      ]
-    },
-    { 
-      id: 'inventory', 
-      name: 'Inventory', 
-      icon: 'inventory', 
-      hasSubmenu: false
-    },
-    { 
-      id: 'transactions', 
-      name: 'Transactions', 
-      icon: 'receipt_long', 
-      hasSubmenu: true,
-      submenus: [
-        { id: 'transaction-list', name: 'Transaction List', icon: 'list_alt' },
-        { id: 'new-transaction', name: 'New Transaction', icon: 'add_shopping_cart' }
-      ]
-    },
-    { 
-      id: 'ai', 
-      name: 'AI Helper', 
-      icon: 'smart_toy', 
-      hasSubmenu: false 
-    },
-  ]
-
-  // Auto-expand menu when a submenu is active
-  useEffect(() => {
-    if (activeSubMenu) {
-      // Find which menu contains this submenu
-      const parentMenu = menuItems.find(item => 
-        item.submenus && item.submenus.some(sub => sub.id === activeSubMenu)
-      )
-      if (parentMenu) {
-        setExpandedMenus(prev => ({
-          ...prev,
-          [parentMenu.id]: true
-        }))
-      }
-    }
-  }, [activeSubMenu])
+  const { activeMenu, activeSubMenu } = matchActive(location.pathname)
 
   const toggleSubmenu = (menuId) => {
     setExpandedMenus(prev => ({
@@ -69,16 +90,18 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
   const handleMenuClick = (item) => {
     if (item.hasSubmenu) {
       toggleSubmenu(item.id)
-    } else {
-      onMenuChange(item.id)
-      if (onSubMenuChange) onSubMenuChange(null)
+    } else if (item.path) {
+      navigate(item.path)
     }
     setIsMobileMenuOpen(false)
   }
 
   const handleSubMenuClick = (menuId, submenuId) => {
-    onMenuChange(menuId)
-    if (onSubMenuChange) onSubMenuChange(submenuId)
+    const parentMenu = menuItems.find(item => item.id === menuId)
+    const submenu = parentMenu?.submenus?.find(sub => sub.id === submenuId)
+    if (submenu?.path) {
+      navigate(submenu.path)
+    }
     setIsMobileMenuOpen(false)
   }
 
@@ -95,51 +118,20 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
     })
 
     if (result.isConfirmed) {
-      try {
-        const response = await fetch('http://localhost:8080/motor-shop/backend/api/logout.php', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        })
-
-        const data = await response.json()
-
-        if (data.success) {
-          localStorage.removeItem('userEmail')
-          localStorage.removeItem('isLoggedIn')
-          localStorage.removeItem('userRole')
-          sessionStorage.clear()
-
-          Swal.fire({
-            icon: 'success',
-            title: 'Signed Out!',
-            text: 'You have been successfully signed out.',
-            confirmButtonColor: '#3085d6',
-            timer: 2000,
-            timerProgressBar: true
-          }).then(() => {
-            if (onLogout) {
-              onLogout()
-            }
-          })
-        } else {
-          Swal.fire({
-            icon: 'error',
-            title: 'Error',
-            text: data.message || 'Failed to sign out. Please try again.',
-            confirmButtonColor: '#3085d6'
-          })
+      // Signing out is now a client-side Firebase Auth call (App.jsx's
+      // onLogout prop) — no server round-trip to fail on.
+      Swal.fire({
+        icon: 'success',
+        title: 'Signed Out!',
+        text: 'You have been successfully signed out.',
+        confirmButtonColor: '#3085d6',
+        timer: 2000,
+        timerProgressBar: true
+      }).then(() => {
+        if (onLogout) {
+          onLogout()
         }
-      } catch (error) {
-        console.error('Logout error:', error)
-        Swal.fire({
-          icon: 'error',
-          title: 'Connection Error',
-          text: 'Unable to connect to server. Please try again.',
-          confirmButtonColor: '#3085d6'
-        })
-      }
+      })
     }
   }
 
@@ -152,7 +144,6 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
   }
 
   const isSubmenuExpanded = (menuId) => {
-    // Auto-expand if a submenu is active
     if (activeMenu === menuId && activeSubMenu) {
       return true
     }
@@ -182,7 +173,7 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
       {/* Sidebar */}
       <aside
         className={`
-          fixed left-0 top-0 h-full w-64 bg-[#f8f9ff] border-r border-[#c6c6cd] z-40
+          fixed left-0 top-0 h-full w-64 bg-brand-navy border-r border-white/10 z-40
           flex flex-col
           transition-transform duration-300 ease-in-out
           lg:translate-x-0
@@ -190,10 +181,10 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
         `}
       >
         {/* Logo */}
-        <div className="p-4 flex items-center gap-1 border-b border-[#c6c6cd]">
+        <div className="p-4 flex items-center gap-1 border-b border-white/10">
           <img
             alt="Euro Motor Logo"
-            className="h-10 w-auto object-contain"
+            className="h-9 w-auto object-contain"
             src={logo}
           />
         </div>
@@ -206,15 +197,20 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
                 onClick={() => handleMenuClick(item)}
                 className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-200 cursor-pointer ${
                   isMenuActive(item.id) && !item.hasSubmenu
-                    ? 'bg-[#dce9ff] text-black font-medium'
+                    ? 'bg-brand-red text-white font-medium'
                     : isMenuActive(item.id) && item.hasSubmenu
-                    ? 'bg-[#dce9ff]/50 text-black font-medium'
-                    : 'text-[#45464d] hover:text-black hover:bg-[#dce9ff]/50'
+                    ? 'bg-white/10 text-white font-medium'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <span className="material-symbols-outlined text-xl">{item.icon}</span>
                   <span className="text-sm font-medium">{item.name}</span>
+                  {item.badge && (
+                    <span className="ml-auto text-[8px] font-bold bg-brand-red text-white px-1.5 py-0.5 rounded-full animate-pulse">
+                      {item.badge}
+                    </span>
+                  )}
                 </div>
                 {item.hasSubmenu && (
                   <span className="material-symbols-outlined text-base transition-transform duration-200" style={{
@@ -224,7 +220,7 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
                   </span>
                 )}
               </a>
-              
+
               {/* Submenu items */}
               {item.hasSubmenu && isSubmenuExpanded(item.id) && (
                 <div className="ml-8 mt-1 space-y-1">
@@ -234,8 +230,8 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
                       onClick={() => handleSubMenuClick(item.id, submenu.id)}
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer ${
                         isSubmenuActive(item.id, submenu.id)
-                          ? 'bg-[#dce9ff] text-black font-medium'
-                          : 'text-[#45464d] hover:text-black hover:bg-[#dce9ff]/30'
+                          ? 'bg-brand-red text-white font-medium'
+                          : 'text-white/50 hover:text-white hover:bg-white/5'
                       }`}
                     >
                       <span className="material-symbols-outlined text-base">{submenu.icon}</span>
@@ -249,30 +245,28 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-[#c6c6cd] mt-auto">
+        <div className="border-t border-white/10 mt-auto">
           <div className="p-4 space-y-2">
-            {/* Support link */}
-            <a 
-              href="#" 
-              className="flex items-center gap-3 px-3 py-2 text-sm text-[#45464d] hover:text-black hover:bg-[#dce9ff]/50 rounded-lg transition-colors duration-200"
+            <a
+              href="#"
+              className="flex items-center gap-3 px-3 py-2 text-sm text-white/60 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
               onClick={(e) => {
                 e.preventDefault()
                 Swal.fire({
                   title: 'Support',
                   text: 'For assistance, please contact IT Support.',
                   icon: 'info',
-                  confirmButtonColor: '#3B82F6'
+                  confirmButtonColor: '#dc2626'
                 })
               }}
             >
               <span className="material-symbols-outlined text-xl">help</span>
               <span>Support</span>
             </a>
-            
-            {/* Logout button */}
-            <a 
+
+            <a
               onClick={handleLogout}
-              className="flex items-center gap-3 px-3 py-2 text-sm text-[#45464d] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200 cursor-pointer"
+              className="flex items-center gap-3 px-3 py-2 text-sm text-white/60 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors duration-200 cursor-pointer"
             >
               <span className="material-symbols-outlined text-xl">logout</span>
               <span>Sign Out</span>
@@ -280,6 +274,23 @@ function Sidebar({ activeMenu, activeSubMenu, onMenuChange, onSubMenuChange, onL
           </div>
         </div>
       </aside>
+
+      <style>{`
+        .material-symbols-outlined {
+          font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+          vertical-align: middle;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 10px;
+        }
+      `}</style>
     </>
   )
 }

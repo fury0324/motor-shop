@@ -5,6 +5,7 @@ ini_set('display_errors', 1);
 header('Access-Control-Allow-Origin: http://localhost:5173');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -25,7 +26,19 @@ if (!$data) {
     exit();
 }
 
-// Validate required fields
+// Check if it's a parts transaction - redirect to parts endpoint
+if (isset($data->is_part) && $data->is_part == 1) {
+    $response['message'] = 'Please use add-parts-transaction.php for parts transactions';
+    echo json_encode($response);
+    exit();
+}
+
+// Get processed_by info from request
+$processed_by_name = isset($data->processed_by_name) ? $data->processed_by_name : 'Unknown';
+$processed_by_role = isset($data->processed_by_role) ? $data->processed_by_role : 'Unknown';
+$processed_by_id = isset($data->processed_by_id) ? $data->processed_by_id : null;
+
+// Validate required fields for motorcycle transaction
 $required_fields = ['customer_id', 'inventory_id', 'unit_id', 'payment_type', 'selling_price', 'transaction_date'];
 foreach ($required_fields as $field) {
     if (!isset($data->$field) || empty($data->$field)) {
@@ -55,15 +68,17 @@ try {
         $remaining_balance = $data->selling_price - $down_payment;
     }
     
-    // Prepare transaction query
+    // Prepare transaction query (motorcycle only)
     $query = "INSERT INTO transactions 
-              (transaction_no, customer_id, inventory_id, unit_id, payment_type, 
-               selling_price, amount_paid, down_payment, terms, monthly_amount, 
-               balance, transaction_date, notes, status, created_at, remaining_balance) 
+              (transaction_no, customer_id, inventory_id, unit_id, 
+               payment_type, selling_price, amount_paid, down_payment, terms, monthly_amount, 
+               balance, transaction_date, notes, status, created_at, remaining_balance,
+               processed_by_id, processed_by_name, processed_by_role) 
               VALUES 
-              (:transaction_no, :customer_id, :inventory_id, :unit_id, :payment_type,
-               :selling_price, :amount_paid, :down_payment, :terms, :monthly_amount,
-               :balance, :transaction_date, :notes, 'Completed', NOW(), :remaining_balance)";
+              (:transaction_no, :customer_id, :inventory_id, :unit_id,
+               :payment_type, :selling_price, :amount_paid, :down_payment, :terms, :monthly_amount,
+               :balance, :transaction_date, :notes, 'Completed', NOW(), :remaining_balance,
+               :processed_by_id, :processed_by_name, :processed_by_role)";
     
     $stmt = $pdo->prepare($query);
     
@@ -82,6 +97,9 @@ try {
     $stmt->bindParam(':transaction_date', $data->transaction_date);
     $stmt->bindParam(':notes', $notes);
     $stmt->bindParam(':remaining_balance', $remaining_balance);
+    $stmt->bindParam(':processed_by_id', $processed_by_id);
+    $stmt->bindParam(':processed_by_name', $processed_by_name);
+    $stmt->bindParam(':processed_by_role', $processed_by_role);
     
     if (!$stmt->execute()) {
         throw new Exception("Failed to insert transaction");
@@ -164,6 +182,8 @@ try {
     $response['transaction_no'] = $transaction_no;
     $response['transaction_id'] = $transaction_id;
     $response['remaining_balance'] = $remaining_balance;
+    $response['processed_by_name'] = $processed_by_name;
+    $response['processed_by_role'] = $processed_by_role;
     $response['message'] = 'Transaction processed successfully';
     if ($data->payment_type === 'Installment') {
         $response['message'] .= ' Payment schedule generated for ' . $terms . ' months.';

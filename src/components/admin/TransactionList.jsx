@@ -1,10 +1,19 @@
-import { useState, useEffect } from 'react'
-import Swal from 'sweetalert2'
+// src/components/admin/TransactionList.jsx
+import { useState, useEffect, useRef } from 'react'
+import Swal from '../../lib/swal'
 import InstallmentPayments from './InstallmentPayments'
+import {
+  watchTransactions,
+  watchPartsTransactions,
+  watchInstallmentPayments,
+  watchDueTodayTransactionIds,
+  deleteTransaction as deleteTransactionDoc,
+  bulkDeleteTransactions,
+  deletePartsTransaction,
+  bulkDeletePartsTransactions,
+} from '../../lib/transactions'
 
 function TransactionList({ onNavigateToTransaction }) {
-  const [transactions, setTransactions] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [paymentTypeFilter, setPaymentTypeFilter] = useState('')
@@ -18,90 +27,106 @@ function TransactionList({ onNavigateToTransaction }) {
   const [selectedTransactionForPayment, setSelectedTransactionForPayment] = useState(null)
   const [paymentHistory, setPaymentHistory] = useState([])
   const [isLoadingPayments, setIsLoadingPayments] = useState(false)
+  const [activeTab, setActiveTab] = useState('all') // 'all', 'models', 'parts'
+  const [dueTodayTransactions, setDueTodayTransactions] = useState([]) // ✅ RED DOT STATE
+  const paymentsUnsubRef = useRef(null)
+
+  // Live Firestore data — filters below are applied client-side to these two
+  // raw lists (no server round-trip per filter change, unlike the old
+  // get-transactions.php/get-parts-transactions.php query-param approach).
+  const [rawTransactions, setRawTransactions] = useState([])
+  const [rawPartsTransactions, setRawPartsTransactions] = useState([])
+  const [modelsLoaded, setModelsLoaded] = useState(false)
+  const [partsLoaded, setPartsLoaded] = useState(false)
 
   useEffect(() => {
-    fetchTransactions()
-  }, [searchTerm, statusFilter, paymentTypeFilter, dateFrom, dateTo])
-
-  const fetchTransactions = async () => {
-    setIsLoading(true)
-    try {
-      let url = 'http://localhost:8080/motor-shop/backend/api/get-transactions.php?'
-      const params = []
-      
-      if (searchTerm) params.push(`search=${encodeURIComponent(searchTerm)}`)
-      if (statusFilter) params.push(`status=${statusFilter}`)
-      if (paymentTypeFilter) params.push(`payment_type=${paymentTypeFilter}`)
-      if (dateFrom) params.push(`date_from=${dateFrom}`)
-      if (dateTo) params.push(`date_to=${dateTo}`)
-      
-      url += params.join('&')
-      
-      const response = await fetch(url)
-      const data = await response.json()
-      
-      if (data.success) {
-        setTransactions(data.transactions)
-        setSelectedTransactions([])
-        setSelectAll(false)
-      } else {
-        console.error('Error fetching transactions:', data.message)
+    const unsubModels = watchTransactions(
+      (list) => {
+        setRawTransactions(list.map(t => ({ ...t, transaction_type: 'model' })))
+        setModelsLoaded(true)
+      },
+      (error) => {
+        console.error('Error fetching transactions:', error)
+        setModelsLoaded(true)
       }
-    } catch (error) {
-      console.error('Error:', error)
-      Swal.fire({
-        icon: 'error',
-        title: 'Connection Error',
-        text: 'Unable to fetch transactions. Please try again.',
-        confirmButtonColor: '#3B82F6'
-      })
-    } finally {
-      setIsLoading(false)
+    )
+    const unsubParts = watchPartsTransactions(
+      (list) => {
+        setRawPartsTransactions(list.map(t => ({ ...t, transaction_type: 'part' })))
+        setPartsLoaded(true)
+      },
+      (error) => {
+        console.error('Error fetching parts transactions:', error)
+        setPartsLoaded(true)
+      }
+    )
+    const unsubDueToday = watchDueTodayTransactionIds(setDueTodayTransactions, (error) =>
+      console.error('Error checking due today:', error)
+    )
+    return () => {
+      unsubModels()
+      unsubParts()
+      unsubDueToday()
+      if (paymentsUnsubRef.current) paymentsUnsubRef.current()
+    }
+  }, [])
+
+  const isLoading = !(modelsLoaded && partsLoaded)
+
+  const matchesFilters = (t) => {
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      const haystack = `${t.transactionNo || ''} ${t.customerName || ''} ${t.inventoryName || ''}`.toLowerCase()
+      if (!haystack.includes(term)) return false
+    }
+    if (statusFilter && t.status !== statusFilter) return false
+    if (paymentTypeFilter && t.paymentType !== paymentTypeFilter) return false
+    if (dateFrom && t.transactionDate < dateFrom) return false
+    if (dateTo && t.transactionDate > dateTo) return false
+    return true
+  }
+
+  const transactions = [...rawTransactions.filter(matchesFilters), ...rawPartsTransactions.filter(matchesFilters)]
+    .sort((a, b) => {
+      const toDate = (t) => t.createdAt?.toDate ? t.createdAt.toDate() : new Date(t.transactionDate)
+      return toDate(b) - toDate(a)
+    })
+
+  const handleRefreshTransactions = () => {
+    // Data is live via Firestore listeners — nothing to manually refetch.
+  }
+
+  const viewTransactionDetails = (transaction) => {
+    setSelectedTransaction(transaction)
+    setPaymentHistory([])
+    setShowDetailsModal(true)
+
+    if (paymentsUnsubRef.current) {
+      paymentsUnsubRef.current()
+      paymentsUnsubRef.current = null
+    }
+
+    if (transaction.transaction_type === 'model' && transaction.paymentType === 'Installment') {
+      setIsLoadingPayments(true)
+      paymentsUnsubRef.current = watchInstallmentPayments(
+        transaction.id,
+        (list) => {
+          setPaymentHistory(list)
+          setIsLoadingPayments(false)
+        },
+        (error) => {
+          console.error('Error fetching payment history:', error)
+          setIsLoadingPayments(false)
+        }
+      )
     }
   }
 
-  const handleRefreshTransactions = () => {
-    fetchTransactions()
-  }
-
-  const viewTransactionDetails = async (id) => {
-    setIsLoadingPayments(true)
-    try {
-      const response = await fetch(`http://localhost:8080/motor-shop/backend/api/get-installment-payments.php?transaction_id=${id}`)
-      const data = await response.json()
-      
-      if (data.success) {
-        const transaction = {
-          ...data.transaction,
-          selling_price: parseFloat(data.transaction.selling_price) || 0,
-          amount_paid: parseFloat(data.transaction.amount_paid) || 0,
-          down_payment: parseFloat(data.transaction.down_payment) || 0,
-          monthly_amount: parseFloat(data.transaction.monthly_amount) || 0,
-          balance: parseFloat(data.transaction.remaining_balance) || 0,
-          terms: data.transaction.terms || 0,
-          total_paid_installments: parseFloat(data.transaction.total_paid_installments) || 0
-        }
-        setSelectedTransaction(transaction)
-        setPaymentHistory(data.payments || [])
-        setShowDetailsModal(true)
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Failed to load transaction details.',
-          confirmButtonColor: '#3B82F6'
-        })
-      }
-    } catch (error) {
-      console.error('Error:', error)
-      Swal.fire({
-        icon: 'error',
-        title: 'Connection Error',
-        text: 'Unable to fetch transaction details.',
-        confirmButtonColor: '#3B82F6'
-      })
-    } finally {
-      setIsLoadingPayments(false)
+  const closeDetailsModal = () => {
+    setShowDetailsModal(false)
+    if (paymentsUnsubRef.current) {
+      paymentsUnsubRef.current()
+      paymentsUnsubRef.current = null
     }
   }
 
@@ -110,7 +135,7 @@ function TransactionList({ onNavigateToTransaction }) {
     setShowPaymentsModal(true)
   }
 
-  const deleteTransaction = async (id, transactionNo) => {
+  const deleteTransaction = async (id, transactionNo, type) => {
     const result = await Swal.fire({
       title: 'Delete Transaction?',
       text: `Are you sure you want to delete ${transactionNo}? This action cannot be undone.`,
@@ -132,38 +157,23 @@ function TransactionList({ onNavigateToTransaction }) {
       })
 
       try {
-        const response = await fetch('http://localhost:8080/motor-shop/backend/api/delete-transaction.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: id })
-        })
-        
-        const data = await response.json()
-        
-        if (data.success) {
-          Swal.fire({
-            icon: 'success',
-            title: 'Deleted!',
-            text: 'Transaction has been deleted.',
-            confirmButtonColor: '#3B82F6',
-            timer: 2000,
-            showConfirmButton: false
-          })
-          fetchTransactions()
+        if (type === 'part') {
+          await deletePartsTransaction(id)
         } else {
-          Swal.fire({
-            icon: 'error',
-            title: 'Error',
-            text: data.message,
-            confirmButtonColor: '#3B82F6'
-          })
+          await deleteTransactionDoc(id)
         }
+        Swal.fire({
+          icon: 'success',
+          title: 'Deleted!',
+          text: 'Transaction has been deleted.',
+          timer: 2000,
+          showConfirmButton: false
+        })
       } catch (error) {
         Swal.fire({
           icon: 'error',
           title: 'Error',
-          text: 'Failed to delete transaction.',
-          confirmButtonColor: '#3B82F6'
+          text: error.message || 'Failed to delete transaction.'
         })
       }
     }
@@ -172,31 +182,32 @@ function TransactionList({ onNavigateToTransaction }) {
   const printInvoice = (transaction) => {
     const printWindow = window.open('', '_blank')
     
-    const customerName = transaction.customer_name || 'N/A'
-    const customerContact = transaction.contact_number || 'N/A'
+    const isPart = transaction.transaction_type === 'part'
+    const customerName = transaction.customerName || 'N/A'
+    const customerContact = transaction.customerContact || 'N/A'
     const customerEmail = transaction.email || 'N/A'
-    const customerAddress = transaction.home_address || 'N/A'
-    
-    const productName = transaction.product_name || 'N/A'
+    const customerAddress = transaction.homeAddress || 'N/A'
+
+    const productName = transaction.inventoryName || 'N/A'
     const productBrand = transaction.brand || 'N/A'
-    const engineNumber = transaction.engine_number || 'N/A'
-    const chassisNumber = transaction.chassis_number || 'N/A'
+    const engineNumber = transaction.engineNumber || 'N/A'
+    const chassisNumber = transaction.chassisNumber || 'N/A'
     const color = transaction.color || 'N/A'
-    
-    const sellingPrice = parseFloat(transaction.selling_price) || 0
-    const amountPaid = parseFloat(transaction.amount_paid) || 0
-    const downPayment = parseFloat(transaction.down_payment) || 0
+    const quantity = transaction.quantity || 1
+
+    const sellingPrice = parseFloat(transaction.sellingPrice || transaction.totalAmount || 0)
+    const amountPaid = parseFloat(transaction.amountPaid || 0)
+    const downPayment = parseFloat(transaction.downPayment || 0)
     const terms = transaction.terms || 'N/A'
-    const monthlyAmount = parseFloat(transaction.monthly_amount) || 0
-    const balance = parseFloat(transaction.balance) || 0
-    
-    const change = amountPaid - sellingPrice
+    const monthlyAmount = parseFloat(transaction.monthlyAmount || 0)
+    const balance = parseFloat(transaction.remainingBalance || 0)
+    const change = isPart ? (transaction.changeAmount || amountPaid - sellingPrice) : amountPaid - sellingPrice
     
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Invoice ${transaction.transaction_no}</title>
+        <title>Invoice ${transaction.transactionNo}</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: 'Arial', sans-serif; margin: 0; padding: 20px; background: #fff; }
@@ -205,6 +216,9 @@ function TransactionList({ onNavigateToTransaction }) {
           .header h1 { margin: 0; color: #333; font-size: 24px; }
           .header p { margin: 5px 0; color: #666; font-size: 12px; }
           .header h2 { margin: 10px 0 0; font-size: 18px; }
+          .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: bold; margin-left: 10px; }
+          .badge-part { background: #dbeafe; color: #1e40af; }
+          .badge-model { background: #000; color: #fff; }
           .invoice-details { margin-bottom: 20px; padding: 10px; background: #f8f9ff; border-radius: 5px; }
           .invoice-details p { margin: 5px 0; }
           .section { margin-bottom: 20px; border: 1px solid #eee; padding: 15px; border-radius: 5px; }
@@ -227,12 +241,15 @@ function TransactionList({ onNavigateToTransaction }) {
             <h1>EURO MOTOR SHOP</h1>
             <p>123 Motorcycle Street, Manila, Philippines</p>
             <p>Tel: (02) 1234-5678 | Email: info@euromotor.com</p>
-            <h2>SALES INVOICE</h2>
+            <h2>SALES INVOICE 
+              <span class="badge ${isPart ? 'badge-part' : 'badge-model'}">${isPart ? 'PART' : 'MODEL'}</span>
+            </h2>
           </div>
           
           <div class="invoice-details">
-            <p><strong>Invoice No:</strong> ${transaction.transaction_no}</p>
-            <p><strong>Date:</strong> ${formatDate(transaction.transaction_date)}</p>
+            <p><strong>Invoice No:</strong> ${transaction.transactionNo}</p>
+            <p><strong>Date:</strong> ${formatDate(transaction.transactionDate)}</p>
+            <p><strong>Processed By:</strong> ${transaction.processedBy?.name || 'Unknown'} (${transaction.processedBy?.role || 'Unknown'})</p>
           </div>
           
           <div class="section">
@@ -244,30 +261,69 @@ function TransactionList({ onNavigateToTransaction }) {
           </div>
           
           <div class="section">
-            <h3>Product Information</h3>
-            <div class="info-row"><span class="info-label">Model:</span><span class="info-value">${productName}</span></div>
-            <div class="info-row"><span class="info-label">Brand:</span><span class="info-value">${productBrand}</span></div>
-            <div class="info-row"><span class="info-label">Engine Number:</span><span class="info-value">${engineNumber}</span></div>
-            <div class="info-row"><span class="info-label">Chassis Number:</span><span class="info-value">${chassisNumber}</span></div>
-            <div class="info-row"><span class="info-label">Color:</span><span class="info-value">${color}</span></div>
+            <h3>${isPart ? 'Part' : 'Product'} Information</h3>
+            <div class="info-row"><span class="info-label">${isPart ? 'Part' : 'Model'}:</span><span class="info-value">${productName}</span></div>
+            ${!isPart ? `<div class="info-row"><span class="info-label">Brand:</span><span class="info-value">${productBrand}</span></div>` : ''}
+            ${!isPart ? `<div class="info-row"><span class="info-label">Engine Number:</span><span class="info-value">${engineNumber}</span></div>` : ''}
+            ${!isPart ? `<div class="info-row"><span class="info-label">Chassis Number:</span><span class="info-value">${chassisNumber}</span></div>` : ''}
+            ${!isPart ? `<div class="info-row"><span class="info-label">Color:</span><span class="info-value">${color}</span></div>` : ''}
+            ${isPart ? `<div class="info-row"><span class="info-label">Quantity:</span><span class="info-value">${quantity}</span></div>` : ''}
           </div>
           
           <div class="section">
             <h3>Payment Details</h3>
             <table class="payment-table">
-              <thead><tr><th>Description</th><th>Amount</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
               <tbody>
-                <tr><td>Selling Price</td><td>${formatCurrency(sellingPrice)}</td></tr>
-                ${transaction.payment_type === 'Cash' ? `
-                  <tr><td>Amount Paid</td><td>${formatCurrency(amountPaid)}</td></tr>
-                  <tr><td>Change</td><td>${formatCurrency(change > 0 ? change : 0)}</td></tr>
+                <tr>
+                  <td>${isPart ? 'Total Amount' : 'Selling Price'}</td>
+                  <td>${formatCurrency(sellingPrice)}</td>
+                </tr>
+                ${isPart ? `
+                  <tr>
+                    <td>Amount Paid</td>
+                    <td>${formatCurrency(amountPaid)}</td>
+                  </tr>
+                  <tr>
+                    <td>Change</td>
+                    <td>${formatCurrency(change > 0 ? change : 0)}</td>
+                  </tr>
+                ` : transaction.paymentType === 'Cash' ? `
+                  <tr>
+                    <td>Amount Paid</td>
+                    <td>${formatCurrency(amountPaid)}</td>
+                  </tr>
+                  <tr>
+                    <td>Change</td>
+                    <td>${formatCurrency(change > 0 ? change : 0)}</td>
+                  </tr>
                 ` : `
-                  <tr><td>Down Payment</td><td>${formatCurrency(downPayment)}</td></tr>
-                  <tr><td>Terms</td><td>${terms} months</td></tr>
-                  <tr><td>Monthly Amortization</td><td>${formatCurrency(monthlyAmount)}</td></tr>
-                  <tr><td>Remaining Balance</td><td>${formatCurrency(balance)}</td></tr>
+                  <tr>
+                    <td>Down Payment</td>
+                    <td>${formatCurrency(downPayment)}</td>
+                  </tr>
+                  <tr>
+                    <td>Terms</td>
+                    <td>${terms} months</td>
+                  </tr>
+                  <tr>
+                    <td>Monthly Amortization</td>
+                    <td>${formatCurrency(monthlyAmount)}</td>
+                  </tr>
+                  <tr>
+                    <td>Remaining Balance</td>
+                    <td>${formatCurrency(balance)}</td>
+                  </tr>
                 `}
-                <tr class="total-row"><td><strong>Total Amount</strong></td><td><strong>${formatCurrency(transaction.payment_type === 'Cash' ? amountPaid : downPayment)}</strong></td></tr>
+                <tr class="total-row">
+                  <td><strong>Total Amount</strong></td>
+                  <td><strong>${formatCurrency(isPart ? amountPaid : (transaction.paymentType === 'Cash' ? amountPaid : downPayment))}</strong></td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -289,7 +345,11 @@ function TransactionList({ onNavigateToTransaction }) {
   }
 
   const exportToCSV = () => {
-    if (transactions.length === 0) {
+    const currentTransactions = activeTab === 'parts' ? transactions.filter(t => t.transaction_type === 'part') :
+                               activeTab === 'models' ? transactions.filter(t => t.transaction_type === 'model') :
+                               transactions
+    
+    if (currentTransactions.length === 0) {
       Swal.fire({
         icon: 'warning',
         title: 'No Data',
@@ -299,23 +359,25 @@ function TransactionList({ onNavigateToTransaction }) {
       return
     }
 
-    const exportData = transactions.map(t => ({
-      'Transaction No': t.transaction_no,
-      'Date': formatDate(t.transaction_date),
-      'Customer': t.customer_name,
-      'Contact': t.contact_number,
-      'Product': t.product_name,
-      'Brand': t.brand,
-      'Engine #': t.engine_number,
-      'Chassis #': t.chassis_number,
-      'Payment Type': t.payment_type,
-      'Selling Price': t.selling_price,
-      'Amount Paid': t.amount_paid || 0,
-      'Down Payment': t.down_payment || 0,
+    const exportData = currentTransactions.map(t => ({
+      'Transaction No': t.transactionNo,
+      'Type': t.transaction_type === 'part' ? 'Part' : 'Model',
+      'Date': formatDate(t.transactionDate),
+      'Customer': t.customerName,
+      'Contact': t.customerContact || '',
+      'Product': t.inventoryName || '',
+      'Brand': t.brand || '',
+      'Quantity': t.quantity || 1,
+      'Payment Type': t.paymentType || 'Cash',
+      'Selling Price': t.sellingPrice || t.totalAmount || 0,
+      'Amount Paid': t.amountPaid || 0,
+      'Change': t.changeAmount || 0,
+      'Down Payment': t.downPayment || 0,
       'Terms': t.terms || 'N/A',
-      'Monthly Amortization': t.monthly_amount || 0,
-      'Balance': t.balance || 0,
-      'Status': t.status,
+      'Monthly Amortization': t.monthlyAmount || 0,
+      'Balance': t.remainingBalance || 0,
+      'Status': t.status || 'Completed',
+      'Processed By': t.processedBy?.name || 'Unknown',
       'Notes': t.notes || ''
     }))
 
@@ -364,12 +426,19 @@ function TransactionList({ onNavigateToTransaction }) {
   }
 
   const handleSelectAll = () => {
+    const currentTransactions = getCurrentTransactions()
     if (selectAll) {
       setSelectedTransactions([])
     } else {
-      setSelectedTransactions(transactions.map(t => t.id))
+      setSelectedTransactions(currentTransactions.map(t => t.id))
     }
     setSelectAll(!selectAll)
+  }
+
+  const getCurrentTransactions = () => {
+    if (activeTab === 'parts') return transactions.filter(t => t.transaction_type === 'part')
+    if (activeTab === 'models') return transactions.filter(t => t.transaction_type === 'model')
+    return transactions
   }
 
   const bulkDelete = async () => {
@@ -404,40 +473,35 @@ function TransactionList({ onNavigateToTransaction }) {
       })
 
       try {
-        const response = await fetch('http://localhost:8080/motor-shop/backend/api/bulk-delete-transactions.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: selectedTransactions })
-        })
-        
-        const data = await response.json()
-        
-        if (data.success) {
-          Swal.fire({
-            icon: 'success',
-            title: 'Deleted!',
-            text: data.message,
-            confirmButtonColor: '#3B82F6',
-            timer: 2000,
-            showConfirmButton: false
-          })
-          setSelectedTransactions([])
-          setSelectAll(false)
-          fetchTransactions()
-        } else {
-          Swal.fire({
-            icon: 'error',
-            title: 'Error',
-            text: data.message,
-            confirmButtonColor: '#3B82F6'
-          })
+        // Separate models and parts
+        const modelsToDelete = selectedTransactions.filter(id =>
+          transactions.find(t => t.id === id && t.transaction_type === 'model')
+        )
+        const partsToDelete = selectedTransactions.filter(id =>
+          transactions.find(t => t.id === id && t.transaction_type === 'part')
+        )
+
+        if (modelsToDelete.length > 0) {
+          await bulkDeleteTransactions(modelsToDelete)
         }
+        if (partsToDelete.length > 0) {
+          await bulkDeletePartsTransactions(partsToDelete)
+        }
+
+        Swal.fire({
+          icon: 'success',
+          title: 'Deleted!',
+          text: `${selectedTransactions.length} transaction(s) deleted.`,
+          timer: 2000,
+          showConfirmButton: false
+        })
+        setSelectedTransactions([])
+        setSelectAll(false)
       } catch (error) {
         Swal.fire({
           icon: 'error',
           title: 'Error',
-          text: 'Failed to delete transactions.',
-          confirmButtonColor: '#3B82F6'
+          text: error.message || 'Failed to delete transactions.'
         })
       }
     }
@@ -465,6 +529,12 @@ function TransactionList({ onNavigateToTransaction }) {
     return type === 'Cash' 
       ? 'bg-blue-100 text-blue-800' 
       : 'bg-purple-100 text-purple-800'
+  }
+
+  const getTransactionTypeBadge = (type) => {
+    return type === 'part'
+      ? 'bg-blue-600 text-white'
+      : 'bg-black text-white'
   }
 
   const formatCurrency = (amount) => {
@@ -509,6 +579,8 @@ function TransactionList({ onNavigateToTransaction }) {
     setDateTo('')
   }
 
+  const currentTransactions = getCurrentTransactions()
+
   return (
     <div className="p-4 sm:p-5">
       {/* Header */}
@@ -552,9 +624,48 @@ function TransactionList({ onNavigateToTransaction }) {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Tabs - Added Parts tab */}
+      <div className="flex gap-2 mb-4 border-b border-[#c6c6cd]">
+        <button
+          onClick={() => { setActiveTab('all'); setSelectAll(false); setSelectedTransactions([]); }}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
+            activeTab === 'all' 
+              ? 'border-black text-black' 
+              : 'border-transparent text-[#45464d] hover:text-black'
+          }`}
+        >
+          All Transactions
+        </button>
+        <button
+          onClick={() => { setActiveTab('models'); setSelectAll(false); setSelectedTransactions([]); }}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1 ${
+            activeTab === 'models' 
+              ? 'border-black text-black' 
+              : 'border-transparent text-[#45464d] hover:text-black'
+          }`}
+        >
+          <span className="material-symbols-outlined text-sm">motorcycle</span>
+          Models
+        </button>
+        <button
+          onClick={() => { setActiveTab('parts'); setSelectAll(false); setSelectedTransactions([]); }}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1 ${
+            activeTab === 'parts' 
+              ? 'border-black text-black' 
+              : 'border-transparent text-[#45464d] hover:text-black'
+          }`}
+        >
+          <span className="material-symbols-outlined text-sm">build</span>
+          Parts
+        </button>
+        <span className="ml-auto text-xs text-[#45464d] self-center">
+          {currentTransactions.length} transaction(s)
+        </span>
+      </div>
+
+      {/* Filters - Keep same as before, add parts filter condition */}
       <div className="bg-white border border-[#c6c6cd] rounded-xl p-4 mb-6 shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="sm:col-span-2 lg:col-span-1">
             <label className="text-xs font-semibold text-[#45464d] mb-1 block">Search</label>
             <div className="relative">
@@ -569,50 +680,83 @@ function TransactionList({ onNavigateToTransaction }) {
             </div>
           </div>
           
+          {activeTab !== 'parts' && (
+            <>
+              <div>
+                <label className="text-xs font-semibold text-[#45464d] mb-1 block">Status</label>
+                <select
+                  className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none bg-white"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="">All Status</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="text-xs font-semibold text-[#45464d] mb-1 block">Payment Type</label>
+                <select
+                  className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none bg-white"
+                  value={paymentTypeFilter}
+                  onChange={(e) => setPaymentTypeFilter(e.target.value)}
+                >
+                  <option value="">All Types</option>
+                  <option value="Cash">Cash</option>
+                  <option value="Installment">Installment</option>
+                </select>
+              </div>
+            </>
+          )}
+          
+          {activeTab === 'parts' && (
+            <>
+              <div>
+                <label className="text-xs font-semibold text-[#45464d] mb-1 block">Status</label>
+                <select
+                  className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none bg-white"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="">All Status</option>
+                  <option value="Completed">Completed</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="text-xs font-semibold text-[#45464d] mb-1 block">Payment Type</label>
+                <select
+                  className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none bg-white"
+                  value={paymentTypeFilter}
+                  onChange={(e) => setPaymentTypeFilter(e.target.value)}
+                  disabled
+                >
+                  <option value="Cash">Cash (Parts Only)</option>
+                </select>
+              </div>
+            </>
+          )}
+          
           <div>
-            <label className="text-xs font-semibold text-[#45464d] mb-1 block">Status</label>
-            <select
-              className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none bg-white"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="">All Status</option>
-              <option value="Completed">Completed</option>
-              <option value="Pending">Pending</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
+            <label className="text-xs font-semibold text-[#45464d] mb-1 block">Date From</label>
+            <input
+              type="date"
+              className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
           </div>
           
           <div>
-            <label className="text-xs font-semibold text-[#45464d] mb-1 block">Payment Type</label>
-            <select
-              className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none bg-white"
-              value={paymentTypeFilter}
-              onChange={(e) => setPaymentTypeFilter(e.target.value)}
-            >
-              <option value="">All Types</option>
-              <option value="Cash">Cash</option>
-              <option value="Installment">Installment</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className="text-xs font-semibold text-[#45464d] mb-1 block">Date Range</label>
-            <div className="flex items-center gap-1">
-              <input
-                type="date"
-                className="flex-1 px-2 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-              <span className="text-[#45464d] text-xs">-</span>
-              <input
-                type="date"
-                className="flex-1 px-2 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </div>
+            <label className="text-xs font-semibold text-[#45464d] mb-1 block">Date To</label>
+            <input
+              type="date"
+              className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
           </div>
         </div>
         
@@ -626,7 +770,7 @@ function TransactionList({ onNavigateToTransaction }) {
         )}
       </div>
 
-      {/* Desktop Table View */}
+      {/* Desktop Table View - Added Parts column for quantity */}
       <div className="hidden lg:block bg-white border border-[#c6c6cd] rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -636,9 +780,11 @@ function TransactionList({ onNavigateToTransaction }) {
                   <input type="checkbox" checked={selectAll} onChange={handleSelectAll} className="rounded border-[#c6c6cd] text-black focus:ring-black" />
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-[#45464d]">Transaction #</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[#45464d]">Type</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-[#45464d]">Date</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-[#45464d]">Customer</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-[#45464d]">Product</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[#45464d]">Qty</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-[#45464d]">Payment Type</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-[#45464d]">Amount</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-[#45464d]">Status</th>
@@ -647,100 +793,295 @@ function TransactionList({ onNavigateToTransaction }) {
             </thead>
             <tbody className="divide-y divide-[#c6c6cd]">
               {isLoading ? (
-                <tr><td colSpan="9" className="px-4 py-8 text-center"><div className="flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div></div></td></tr>
-              ) : transactions.length === 0 ? (
-                <tr><td colSpan="9" className="px-4 py-8 text-center text-[#45464d]"><span className="material-symbols-outlined text-4xl mb-2 block">receipt_long</span><p>No transactions found</p></td></tr>
+                <tr>
+                  <td colSpan="11" className="px-4 py-8 text-center">
+                    <div className="flex justify-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+                    </div>
+                  </td>
+                </tr>
+              ) : currentTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan="11" className="px-4 py-8 text-center text-[#45464d]">
+                    <span className="material-symbols-outlined text-4xl mb-2 block">receipt_long</span>
+                    <p>No transactions found</p>
+                  </td>
+                </tr>
               ) : (
-                transactions.map((transaction) => (
-                  <tr key={transaction.id} className="hover:bg-[#f8f9ff] transition-colors">
-                    <td className="px-4 py-3"><input type="checkbox" checked={selectedTransactions.includes(transaction.id)} onChange={() => handleSelectTransaction(transaction.id)} className="rounded border-[#c6c6cd] text-black focus:ring-black" /></td>
-                    <td className="px-4 py-3"><p className="text-sm font-mono font-semibold">{transaction.transaction_no}</p></td>
-                    <td className="px-4 py-3 text-sm whitespace-nowrap">{formatDate(transaction.transaction_date)}</td>
-                    <td className="px-4 py-3"><p className="text-sm font-medium">{transaction.customer_name}</p><p className="text-xs text-[#45464d]">{transaction.contact_number}</p></td>
-                    <td className="px-4 py-3"><div className="flex items-center gap-2"><div className="w-8 h-8 rounded-lg bg-[#e5eeff] overflow-hidden flex-shrink-0"><img src={transaction.image || 'https://via.placeholder.com/32x32'} className="w-full h-full object-cover" alt="product" /></div><div><p className="text-sm font-medium">{transaction.product_name}</p><p className="text-xs text-[#45464d]">{transaction.brand}</p></div></div></td>
-                    <td className="px-4 py-3"><span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentTypeBadge(transaction.payment_type)}`}>{transaction.payment_type}</span></td>
-                    <td className="px-4 py-3 text-right"><p className="text-sm font-semibold">{formatCurrency(transaction.selling_price)}</p>{transaction.payment_type === 'Installment' && transaction.balance > 0 && <p className="text-xs text-orange-600">Balance: {formatCurrency(transaction.balance)}</p>}</td>
-                    <td className="px-4 py-3 text-center"><span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(transaction.status)}`}>{transaction.status}</span></td>
-                    <td className="px-4 py-3 text-center"><div className="flex items-center justify-center gap-2">
-                      <button onClick={() => viewTransactionDetails(transaction.id)} className="p-1 hover:text-blue-600 transition-colors" title="View Details"><span className="material-symbols-outlined text-base">visibility</span></button>
-                      <button onClick={() => printInvoice(transaction)} className="p-1 hover:text-black transition-colors" title="Print Invoice"><span className="material-symbols-outlined text-base">print</span></button>
-                      {transaction.payment_type === 'Installment' && <button onClick={() => viewInstallmentPayments(transaction)} className="p-1 hover:text-purple-600 transition-colors" title="View Installment Payments"><span className="material-symbols-outlined text-base">receipt</span></button>}
-                      <button onClick={() => deleteTransaction(transaction.id, transaction.transaction_no)} className="p-1 hover:text-red-600 transition-colors" title="Delete"><span className="material-symbols-outlined text-base">delete</span></button>
-                    </div></td>
-                  </tr>
-                ))
+                currentTransactions.map((transaction) => {
+                  const isPart = transaction.transaction_type === 'part'
+                  return (
+                    <tr key={transaction.id} className="hover:bg-[#f8f9ff] transition-colors">
+                      <td className="px-4 py-3">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedTransactions.includes(transaction.id)} 
+                          onChange={() => handleSelectTransaction(transaction.id)} 
+                          className="rounded border-[#c6c6cd] text-black focus:ring-black" 
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-mono font-semibold">{transaction.transactionNo}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex px-2 py-1 text-xs font-bold rounded-full ${getTransactionTypeBadge(isPart ? 'part' : 'model')}`}>
+                          {isPart ? 'PART' : 'MODEL'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm whitespace-nowrap">
+                        {formatDate(transaction.transactionDate)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-medium">{transaction.customerName}</p>
+                        <p className="text-xs text-[#45464d]">{transaction.customerContact}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-[#e5eeff] overflow-hidden flex-shrink-0">
+                            <img 
+                              src={transaction.imageUrl || 'https://via.placeholder.com/32x32'} 
+                              className="w-full h-full object-cover" 
+                              alt="product" 
+                            />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">{transaction.inventoryName}</p>
+                            <p className="text-xs text-[#45464d]">{transaction.brand || (isPart ? 'Part' : '')}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="text-sm font-semibold">{transaction.quantity || 1}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentTypeBadge(transaction.paymentType)}`}>
+                          {transaction.paymentType}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <p className="text-sm font-semibold">{formatCurrency(transaction.sellingPrice || transaction.totalAmount)}</p>
+                        {!isPart && transaction.paymentType === 'Installment' && transaction.remainingBalance > 0 && (
+                          <p className="text-xs text-orange-600">Balance: {formatCurrency(transaction.remainingBalance)}</p>
+                        )}
+                        {isPart && transaction.changeAmount > 0 && (
+                          <p className="text-xs text-green-600">Change: {formatCurrency(transaction.changeAmount)}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(transaction.status)}`}>
+                          {transaction.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button 
+                            onClick={() => viewTransactionDetails(transaction)} 
+                            className="p-1 hover:text-blue-600 transition-colors" 
+                            title="View Details"
+                          >
+                            <span className="material-symbols-outlined text-base">visibility</span>
+                          </button>
+                          <button 
+                            onClick={() => printInvoice(transaction)} 
+                            className="p-1 hover:text-black transition-colors" 
+                            title="Print Invoice"
+                          >
+                            <span className="material-symbols-outlined text-base">print</span>
+                          </button>
+                          {!isPart && transaction.paymentType === 'Installment' && (
+                            <button 
+                              onClick={() => viewInstallmentPayments(transaction)} 
+                              className="p-1 hover:text-purple-600 transition-colors relative" 
+                              title="View Installment Payments"
+                            >
+                              <span className="material-symbols-outlined text-base">receipt</span>
+                              {dueTodayTransactions.includes(transaction.id) && (
+                                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+                              )}
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => deleteTransaction(transaction.id, transaction.transactionNo, isPart ? 'part' : 'model')} 
+                            className="p-1 hover:text-red-600 transition-colors" 
+                            title="Delete"
+                          >
+                            <span className="material-symbols-outlined text-base">delete</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Mobile Card View */}
+      {/* Mobile Card View - Same as before with Parts support */}
       <div className="lg:hidden space-y-3">
         {isLoading ? (
           <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div></div>
-        ) : transactions.length === 0 ? (
+        ) : currentTransactions.length === 0 ? (
           <div className="text-center py-8 text-[#45464d]"><span className="material-symbols-outlined text-4xl mb-2 block">receipt_long</span><p>No transactions found</p></div>
         ) : (
-          transactions.map((transaction) => (
-            <div key={transaction.id} className="bg-white border border-[#c6c6cd] rounded-xl p-4 shadow-sm">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex items-center gap-2"><input type="checkbox" checked={selectedTransactions.includes(transaction.id)} onChange={() => handleSelectTransaction(transaction.id)} className="rounded border-[#c6c6cd] text-black focus:ring-black" /><span className="text-xs font-mono font-semibold bg-gray-100 px-2 py-1 rounded">{transaction.transaction_no}</span></div>
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(transaction.status)}`}>{transaction.status}</span>
+          currentTransactions.map((transaction) => {
+            const isPart = transaction.transaction_type === 'part'
+            return (
+              <div key={transaction.id} className="bg-white border border-[#c6c6cd] rounded-xl p-4 shadow-sm">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" checked={selectedTransactions.includes(transaction.id)} onChange={() => handleSelectTransaction(transaction.id)} className="rounded border-[#c6c6cd] text-black focus:ring-black" />
+                    <span className="text-xs font-mono font-semibold bg-gray-100 px-2 py-1 rounded">{transaction.transactionNo}</span>
+                    <span className={`inline-flex px-2 py-0.5 text-[9px] font-bold rounded-full ${getTransactionTypeBadge(isPart ? 'part' : 'model')}`}>
+                      {isPart ? 'PART' : 'MODEL'}
+                    </span>
+                  </div>
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadge(transaction.status)}`}>{transaction.status}</span>
+                </div>
+                <div className="flex items-center gap-3 mb-3 pb-3 border-b border-[#c6c6cd]">
+                  <div className="w-10 h-10 rounded-full bg-[#e5eeff] flex items-center justify-center">
+                    <span className="material-symbols-outlined text-lg text-black">person</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{transaction.customerName}</p>
+                    <p className="text-xs text-[#45464d]">{transaction.customerContact}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 mb-3 pb-3 border-b border-[#c6c6cd]">
+                  <div className="w-10 h-10 rounded-lg bg-[#e5eeff] overflow-hidden">
+                    <img src={transaction.imageUrl || 'https://via.placeholder.com/40x40'} className="w-full h-full object-cover" alt="product" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{transaction.inventoryName}</p>
+                    <p className="text-xs text-[#45464d]">Qty: {transaction.quantity || 1}</p>
+                  </div>
+                </div>
+                <div className="space-y-2 mb-3 pb-3 border-b border-[#c6c6cd]">
+                  <div className="flex justify-between">
+                    <span className="text-xs text-[#45464d]">Payment Type</span>
+                    <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getPaymentTypeBadge(transaction.paymentType)}`}>{transaction.paymentType}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-xs text-[#45464d]">Amount</span>
+                    <span className="text-sm font-semibold">{formatCurrency(transaction.sellingPrice || transaction.totalAmount)}</span>
+                  </div>
+                  {isPart && transaction.changeAmount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-xs text-[#45464d]">Change</span>
+                      <span className="text-sm text-green-600 font-semibold">{formatCurrency(transaction.changeAmount)}</span>
+                    </div>
+                  )}
+                  {!isPart && transaction.paymentType === 'Installment' && transaction.remainingBalance > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-xs text-[#45464d]">Balance</span>
+                      <span className="text-xs text-orange-600 font-semibold">{formatCurrency(transaction.remainingBalance)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-xs text-[#45464d]">Date</span>
+                    <span className="text-xs">{formatDate(transaction.transactionDate)}</span>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 flex-wrap">
+                  <button onClick={() => viewTransactionDetails(transaction)} className="px-3 py-1.5 hover:text-blue-600 rounded-lg text-sm flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">visibility</span>View
+                  </button>
+                  <button onClick={() => printInvoice(transaction)} className="px-3 py-1.5 hover:text-black rounded-lg text-sm flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">print</span>Print
+                  </button>
+                  {!isPart && transaction.paymentType === 'Installment' && (
+                    <button onClick={() => viewInstallmentPayments(transaction)} className="px-3 py-1.5 hover:text-purple-600 rounded-lg text-sm flex items-center gap-1 relative">
+                      <span className="material-symbols-outlined text-sm">receipt</span>
+                      Payments
+                      {dueTodayTransactions.includes(transaction.id) && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+                      )}
+                    </button>
+                  )}
+                  <button onClick={() => deleteTransaction(transaction.id, transaction.transactionNo, isPart ? 'part' : 'model')} className="px-3 py-1.5 hover:text-red-600 rounded-lg text-sm flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">delete</span>Delete
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-3 mb-3 pb-3 border-b border-[#c6c6cd]"><div className="w-10 h-10 rounded-full bg-[#e5eeff] flex items-center justify-center"><span className="material-symbols-outlined text-lg text-black">person</span></div><div><p className="text-sm font-medium">{transaction.customer_name}</p><p className="text-xs text-[#45464d]">{transaction.contact_number}</p></div></div>
-              <div className="flex items-center gap-3 mb-3 pb-3 border-b border-[#c6c6cd]"><div className="w-10 h-10 rounded-lg bg-[#e5eeff] overflow-hidden"><img src={transaction.image || 'https://via.placeholder.com/40x40'} className="w-full h-full object-cover" alt="product" /></div><div><p className="text-sm font-medium">{transaction.product_name}</p><p className="text-xs text-[#45464d]">{transaction.brand}</p></div></div>
-              <div className="space-y-2 mb-3 pb-3 border-b border-[#c6c6cd]"><div className="flex justify-between"><span className="text-xs text-[#45464d]">Payment Type</span><span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getPaymentTypeBadge(transaction.payment_type)}`}>{transaction.payment_type}</span></div><div className="flex justify-between"><span className="text-xs text-[#45464d]">Amount</span><span className="text-sm font-semibold">{formatCurrency(transaction.selling_price)}</span></div>{transaction.payment_type === 'Installment' && transaction.balance > 0 && <div className="flex justify-between"><span className="text-xs text-[#45464d]">Balance</span><span className="text-xs text-orange-600 font-semibold">{formatCurrency(transaction.balance)}</span></div>}<div className="flex justify-between"><span className="text-xs text-[#45464d]">Date</span><span className="text-xs">{formatDate(transaction.transaction_date)}</span></div></div>
-              <div className="flex justify-end gap-3">
-                <button onClick={() => viewTransactionDetails(transaction.id)} className="px-3 py-1.5 hover:text-blue-600 rounded-lg text-sm flex items-center gap-1"><span className="material-symbols-outlined text-sm">visibility</span>View</button>
-                <button onClick={() => printInvoice(transaction)} className="px-3 py-1.5 hover:text-black rounded-lg text-sm flex items-center gap-1"><span className="material-symbols-outlined text-sm">print</span>Print</button>
-                {transaction.payment_type === 'Installment' && <button onClick={() => viewInstallmentPayments(transaction)} className="px-3 py-1.5 hover:text-purple-600 rounded-lg text-sm flex items-center gap-1"><span className="material-symbols-outlined text-sm">receipt</span>Payments</button>}
-                <button onClick={() => deleteTransaction(transaction.id, transaction.transaction_no)} className="px-3 py-1.5 hover:text-red-600 rounded-lg text-sm flex items-center gap-1"><span className="material-symbols-outlined text-sm">delete</span>Delete</button>
-              </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
 
-      {/* Transaction Details Modal with Payment History */}
+      {/* Transaction Details Modal - Updated for Parts */}
       {showDetailsModal && selectedTransaction && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowDetailsModal(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeDetailsModal}>
           <div className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-white border-b border-[#c6c6cd] p-4 flex flex-wrap justify-between items-center gap-2">
-              <h3 className="text-lg font-semibold">Transaction Details</h3>
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-semibold">Transaction Details</h3>
+                <span className={`inline-flex px-2 py-1 text-xs font-bold rounded-full ${getTransactionTypeBadge(selectedTransaction.transaction_type || 'model')}`}>
+                  {selectedTransaction.transaction_type === 'part' ? 'PART' : 'MODEL'}
+                </span>
+              </div>
               <div className="flex gap-2">
                 <button onClick={() => printInvoice(selectedTransaction)} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors flex items-center gap-1">
                   <span className="material-symbols-outlined text-sm">print</span> Print
                 </button>
-                <button onClick={() => setShowDetailsModal(false)} className="p-1 text-[#45464d] hover:text-black"><span className="material-symbols-outlined">close</span></button>
+                <button onClick={closeDetailsModal} className="p-1 text-[#45464d] hover:text-black"><span className="material-symbols-outlined">close</span></button>
               </div>
             </div>
             
             <div className="p-5 space-y-4">
               <div className="bg-gradient-to-r from-black to-gray-800 text-white p-4 rounded-lg">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                  <div><p className="text-xs opacity-70">Transaction #</p><p className="text-base sm:text-lg font-mono font-bold">{selectedTransaction.transaction_no}</p></div>
-                  <div className="text-left sm:text-right"><p className="text-xs opacity-70">Date</p><p className="text-sm">{formatDate(selectedTransaction.transaction_date)}</p></div>
+                  <div><p className="text-xs opacity-70">Transaction #</p><p className="text-base sm:text-lg font-mono font-bold">{selectedTransaction.transactionNo}</p></div>
+                  <div className="text-left sm:text-right"><p className="text-xs opacity-70">Date</p><p className="text-sm">{formatDate(selectedTransaction.transactionDate)}</p></div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-white/20">
+                  <p className="text-xs opacity-70">Processed By</p>
+                  <p className="text-sm font-medium">{selectedTransaction.processedBy?.name} ({selectedTransaction.processedBy?.role})</p>
                 </div>
               </div>
               
               <div className="border rounded-lg p-4">
                 <h4 className="text-xs font-semibold text-[#45464d] uppercase mb-3 flex items-center gap-2"><span className="material-symbols-outlined text-sm">person</span>Customer Information</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div><p className="text-xs text-[#45464d]">Full Name</p><p className="text-sm font-medium">{selectedTransaction.customer_name}</p></div>
-                  <div><p className="text-xs text-[#45464d]">Contact Number</p><p className="text-sm">{selectedTransaction.contact_number || '—'}</p></div>
+                  <div><p className="text-xs text-[#45464d]">Full Name</p><p className="text-sm font-medium">{selectedTransaction.customerName}</p></div>
+                  <div><p className="text-xs text-[#45464d]">Contact Number</p><p className="text-sm">{selectedTransaction.customerContact || '—'}</p></div>
                   <div><p className="text-xs text-[#45464d]">Email</p><p className="text-sm">{selectedTransaction.email || '—'}</p></div>
-                  <div><p className="text-xs text-[#45464d]">Address</p><p className="text-sm">{selectedTransaction.home_address || '—'}</p></div>
+                  <div><p className="text-xs text-[#45464d]">Address</p><p className="text-sm">{selectedTransaction.homeAddress || '—'}</p></div>
                 </div>
               </div>
               
               <div className="border rounded-lg p-4">
-                <h4 className="text-xs font-semibold text-[#45464d] uppercase mb-3 flex items-center gap-2"><span className="material-symbols-outlined text-sm">motorcycle</span>Product Information</h4>
+                <h4 className="text-xs font-semibold text-[#45464d] uppercase mb-3 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-sm">{selectedTransaction.transaction_type === 'part' ? 'build' : 'motorcycle'}</span>
+                  {selectedTransaction.transaction_type === 'part' ? 'Part' : 'Product'} Information
+                </h4>
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="w-20 h-20 rounded-lg bg-[#e5eeff] overflow-hidden flex-shrink-0"><img src={selectedTransaction.image || 'https://via.placeholder.com/80x80'} className="w-full h-full object-cover" alt="product" /></div>
+                  <div className="w-20 h-20 rounded-lg bg-[#e5eeff] overflow-hidden flex-shrink-0">
+                    <img src={selectedTransaction.imageUrl || 'https://via.placeholder.com/80x80'} className="w-full h-full object-cover" alt="product" />
+                  </div>
                   <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div><p className="text-xs text-[#45464d]">Model</p><p className="text-sm font-medium">{selectedTransaction.product_name}</p><p className="text-xs text-[#45464d]">{selectedTransaction.brand} • {selectedTransaction.product_type}</p></div>
-                    <div><p className="text-xs text-[#45464d]">Unit Details</p><p className="text-xs font-mono">Engine: {selectedTransaction.engine_number}</p><p className="text-xs font-mono">Chassis: {selectedTransaction.chassis_number}</p><p className="text-xs">Color: {selectedTransaction.color || '—'}</p></div>
+                    <div>
+                      <p className="text-xs text-[#45464d]">{selectedTransaction.transaction_type === 'part' ? 'Part' : 'Model'}</p>
+                      <p className="text-sm font-medium">{selectedTransaction.inventoryName}</p>
+                      {selectedTransaction.transaction_type !== 'part' && (
+                        <p className="text-xs text-[#45464d]">{selectedTransaction.brand} • {selectedTransaction.inventoryType}</p>
+                      )}
+                    </div>
+                    {selectedTransaction.transaction_type === 'part' ? (
+                      <div>
+                        <p className="text-xs text-[#45464d]">Quantity</p>
+                        <p className="text-sm font-semibold">{selectedTransaction.quantity || 1}</p>
+                        <p className="text-xs text-[#45464d] mt-2">Price per unit</p>
+                        <p className="text-sm font-semibold">{formatCurrency(selectedTransaction.price || 0)}</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-xs text-[#45464d]">Unit Details</p>
+                        <p className="text-xs font-mono">Engine: {selectedTransaction.engineNumber}</p>
+                        <p className="text-xs font-mono">Chassis: {selectedTransaction.chassisNumber}</p>
+                        <p className="text-xs">Color: {selectedTransaction.color || '—'}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -748,26 +1089,58 @@ function TransactionList({ onNavigateToTransaction }) {
               <div className="border rounded-lg p-4">
                 <h4 className="text-xs font-semibold text-[#45464d] uppercase mb-3 flex items-center gap-2"><span className="material-symbols-outlined text-sm">payments</span>Payment Details</h4>
                 <div className="space-y-2">
-                  <div className="flex justify-between py-1 border-b"><span className="text-sm">Selling Price</span><span className="text-sm font-semibold">{formatCurrency(selectedTransaction.selling_price)}</span></div>
+                  <div className="flex justify-between py-1 border-b">
+                    <span className="text-sm">{selectedTransaction.transaction_type === 'part' ? 'Total Amount' : 'Selling Price'}</span>
+                    <span className="text-sm font-semibold">{formatCurrency(selectedTransaction.sellingPrice || selectedTransaction.totalAmount)}</span>
+                  </div>
                   
-                  {selectedTransaction.payment_type === 'Cash' ? (
+                  {selectedTransaction.transaction_type === 'part' ? (
                     <>
-                      <div className="flex justify-between py-1 border-b"><span className="text-sm">Amount Paid</span><span className="text-sm font-semibold text-green-600">{formatCurrency(selectedTransaction.amount_paid)}</span></div>
-                      <div className="flex justify-between py-1"><span className="text-sm">Change</span><span className="text-sm font-semibold text-blue-600">{formatCurrency(selectedTransaction.amount_paid - selectedTransaction.selling_price)}</span></div>
+                      <div className="flex justify-between py-1 border-b">
+                        <span className="text-sm">Amount Paid</span>
+                        <span className="text-sm font-semibold text-green-600">{formatCurrency(selectedTransaction.amountPaid)}</span>
+                      </div>
+                      <div className="flex justify-between py-1">
+                        <span className="text-sm">Change</span>
+                        <span className="text-sm font-semibold text-blue-600">{formatCurrency(selectedTransaction.changeAmount || 0)}</span>
+                      </div>
+                    </>
+                  ) : selectedTransaction.paymentType === 'Cash' ? (
+                    <>
+                      <div className="flex justify-between py-1 border-b">
+                        <span className="text-sm">Amount Paid</span>
+                        <span className="text-sm font-semibold text-green-600">{formatCurrency(selectedTransaction.amountPaid)}</span>
+                      </div>
+                      <div className="flex justify-between py-1">
+                        <span className="text-sm">Change</span>
+                        <span className="text-sm font-semibold text-blue-600">{formatCurrency(selectedTransaction.amountPaid - selectedTransaction.sellingPrice)}</span>
+                      </div>
                     </>
                   ) : (
                     <>
-                      <div className="flex justify-between py-1 border-b"><span className="text-sm">Down Payment</span><span className="text-sm font-semibold">{formatCurrency(selectedTransaction.down_payment)}</span></div>
-                      <div className="flex justify-between py-1 border-b"><span className="text-sm">Terms</span><span className="text-sm font-semibold">{selectedTransaction.terms} months</span></div>
-                      <div className="flex justify-between py-1 border-b"><span className="text-sm">Monthly Amortization</span><span className="text-sm font-semibold">{formatCurrency(selectedTransaction.monthly_amount)}</span></div>
-                      <div className="flex justify-between py-1"><span className="text-sm">Remaining Balance</span><span className="text-sm font-semibold text-orange-600">{formatCurrency(selectedTransaction.balance)}</span></div>
+                      <div className="flex justify-between py-1 border-b">
+                        <span className="text-sm">Down Payment</span>
+                        <span className="text-sm font-semibold">{formatCurrency(selectedTransaction.downPayment)}</span>
+                      </div>
+                      <div className="flex justify-between py-1 border-b">
+                        <span className="text-sm">Terms</span>
+                        <span className="text-sm font-semibold">{selectedTransaction.terms} months</span>
+                      </div>
+                      <div className="flex justify-between py-1 border-b">
+                        <span className="text-sm">Monthly Amortization</span>
+                        <span className="text-sm font-semibold">{formatCurrency(selectedTransaction.monthlyAmount)}</span>
+                      </div>
+                      <div className="flex justify-between py-1">
+                        <span className="text-sm">Remaining Balance</span>
+                        <span className="text-sm font-semibold text-orange-600">{formatCurrency(selectedTransaction.remainingBalance)}</span>
+                      </div>
                     </>
                   )}
                 </div>
               </div>
 
-              {/* Payment History Section - Only for Installment Transactions */}
-              {selectedTransaction.payment_type === 'Installment' && (
+              {/* Payment History - Only for Model Installment */}
+              {selectedTransaction.transaction_type !== 'part' && selectedTransaction.paymentType === 'Installment' && (
                 <div className="border rounded-lg p-4">
                   <h4 className="text-xs font-semibold text-[#45464d] uppercase mb-3 flex items-center gap-2">
                     <span className="material-symbols-outlined text-sm">receipt</span>
@@ -806,36 +1179,36 @@ function TransactionList({ onNavigateToTransaction }) {
                             <th className="px-3 py-2 text-center text-xs font-semibold text-[#45464d]">Status</th>
                             <th className="px-3 py-2 text-left text-xs font-semibold text-[#45464d]">Reference No</th>
                             <th className="px-3 py-2 text-left text-xs font-semibold text-[#45464d]">Notes</th>
-                           </tr>
+                          </tr>
                         </thead>
                         <tbody className="divide-y divide-[#c6c6cd]">
                           {paymentHistory.map((payment, index) => (
                             <tr key={payment.id || index} className="hover:bg-[#f8f9ff]">
-                              <td className="px-3 py-2 text-xs font-mono">{payment.payment_no || index + 1}</td>
-                              <td className="px-3 py-2 text-xs whitespace-nowrap">{formatDate(payment.due_date)}</td>
-                              <td className="px-3 py-2 text-xs whitespace-nowrap">{payment.payment_date ? formatDateTime(payment.payment_date) : '—'}</td>
-                              <td className="px-3 py-2 text-xs text-right font-semibold">{formatCurrency(payment.amount_due)}</td>
-                              <td className="px-3 py-2 text-xs text-right font-semibold text-green-600">{formatCurrency(payment.amount_paid)}</td>
+                              <td className="px-3 py-2 text-xs font-mono">{payment.paymentNo || index + 1}</td>
+                              <td className="px-3 py-2 text-xs whitespace-nowrap">{formatDate(payment.dueDate)}</td>
+                              <td className="px-3 py-2 text-xs whitespace-nowrap">{payment.paymentDate ? formatDateTime(payment.paymentDate) : '—'}</td>
+                              <td className="px-3 py-2 text-xs text-right font-semibold">{formatCurrency(payment.amountDue)}</td>
+                              <td className="px-3 py-2 text-xs text-right font-semibold text-green-600">{formatCurrency(payment.amountPaid)}</td>
                               <td className="px-3 py-2 text-center">
                                 <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${getPaymentStatusBadge(payment.status)}`}>
                                   {payment.status}
                                 </span>
                               </td>
-                              <td className="px-3 py-2 text-xs font-mono">{payment.reference_no || '—'}</td>
+                              <td className="px-3 py-2 text-xs font-mono">{payment.referenceNo || '—'}</td>
                               <td className="px-3 py-2 text-xs text-[#45464d] max-w-[150px] truncate">{payment.notes || '—'}</td>
-                             </tr>
+                            </tr>
                           ))}
                         </tbody>
                         <tfoot className="bg-[#f8f9ff] border-t border-[#c6c6cd]">
                           <tr>
                             <td colSpan="4" className="px-3 py-2 text-xs font-semibold text-right">Total Paid:</td>
                             <td className="px-3 py-2 text-xs font-semibold text-right text-green-600">
-                              {formatCurrency(paymentHistory.reduce((sum, p) => sum + (parseFloat(p.amount_paid) || 0), 0))}
+                              {formatCurrency(paymentHistory.reduce((sum, p) => sum + (parseFloat(p.amountPaid) || 0), 0))}
                             </td>
                             <td colSpan="3"></td>
-                           </tr>
+                          </tr>
                         </tfoot>
-                       </table>
+                      </table>
                     </div>
                   )}
                 </div>
@@ -852,20 +1225,20 @@ function TransactionList({ onNavigateToTransaction }) {
         </div>
       )}
 
-      {/* Installment Payments Modal with refresh callback */}
+      {/* Installment Payments Modal */}
       {showPaymentsModal && selectedTransactionForPayment && (
         <InstallmentPayments 
           transactionId={selectedTransactionForPayment.id}
           onClose={() => {
             setShowPaymentsModal(false)
             if (showDetailsModal && selectedTransaction) {
-              viewTransactionDetails(selectedTransaction.id)
+              viewTransactionDetails(selectedTransaction)
             }
           }}
           onPaymentComplete={() => {
             handleRefreshTransactions()
             if (showDetailsModal && selectedTransaction) {
-              viewTransactionDetails(selectedTransaction.id)
+              viewTransactionDetails(selectedTransaction)
             }
           }}
         />

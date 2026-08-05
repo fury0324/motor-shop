@@ -1,5 +1,14 @@
 import { useState, useEffect } from 'react'
-import Swal from 'sweetalert2'
+import Swal from '../../lib/swal'
+import {
+  watchInventoryWithUnits,
+  newInventoryId,
+  uploadInventoryImage,
+  createInventoryItem,
+  updateInventoryItem,
+  addInventoryUnit,
+  deleteInventoryItem,
+} from '../../lib/inventory'
 
 function Inventory() {
   const [viewMode, setViewMode] = useState('grid')
@@ -10,7 +19,6 @@ function Inventory() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showUnitModal, setShowUnitModal] = useState(false)
-  const [showEditUnitModal, setShowEditUnitModal] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [items, setItems] = useState([])
@@ -22,13 +30,26 @@ function Inventory() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedProduct, setSelectedProduct] = useState(null)
-  const [productUnits, setProductUnits] = useState([])
   const [expandedUnits, setExpandedUnits] = useState({})
+  const [addItemType, setAddItemType] = useState(null) // 'model' or 'part'
+  
+  // New state for part image preview
+  const [partImagePreview, setPartImagePreview] = useState(null)
+  const [partSelectedFile, setPartSelectedFile] = useState(null)
+  const [editPartImagePreview, setEditPartImagePreview] = useState(null)
+  const [editPartSelectedFile, setEditPartSelectedFile] = useState(null)
+  
+  // New state for editing parts - additional fields
+  const [editPartDetails, setEditPartDetails] = useState({
+    description: '',
+    color: '',
+    notes: ''
+  })
   
   const itemsPerPage = 12
   const [typeOptions, setTypeOptions] = useState(['Sport', 'Scooter', 'Off-road', 'Street', 'Touring', 'Cruiser'])
 
-  // WALA NG DESCRIPTION
+  // For Models (full form)
   const [newItem, setNewItem] = useState({
     name: '',
     sku: '',
@@ -39,7 +60,17 @@ function Inventory() {
     image: ''
   })
 
-  // WALA NG DESCRIPTION
+  // For Parts (simplified with image)
+  const [newPart, setNewPart] = useState({
+    name: '',
+    quantity: '',
+    price: '',
+    image: '',
+    description: '',
+    color: '',
+    notes: ''
+  })
+
   const [editItem, setEditItem] = useState({
     id: '',
     name: '',
@@ -48,7 +79,11 @@ function Inventory() {
     type: '',
     brand: '',
     price: '',
-    image: ''
+    image: '',
+    quantity: '', // For parts
+    description: '',
+    color: '',
+    notes: ''
   })
 
   const [newUnit, setNewUnit] = useState({
@@ -58,57 +93,29 @@ function Inventory() {
     notes: ''
   })
 
-  const [editUnit, setEditUnit] = useState({
-    id: '',
-    engine_number: '',
-    chassis_number: '',
-    color: '',
-    unit_status: '',
-    notes: ''
-  })
-
   const colorOptions = [
     'Black', 'White', 'Red', 'Blue', 'Green', 'Yellow', 'Orange', 
     'Purple', 'Pink', 'Gray', 'Silver', 'Gold', 'Matte Black', 
     'Matte Gray', 'Carbon Fiber', 'Racing Blue', 'Rosso Corsa'
   ]
 
-  const unitStatusOptions = ['Available', 'Reserved', 'Sold', 'In Transit']
-
   useEffect(() => {
-    fetchItems()
-  }, [])
-
-  const fetchItems = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/get-inventory.php')
-      const data = await response.json()
-      if (data.success) {
-        setItems(data.items)
-        const uniqueTypes = [...new Set(data.items.map(item => item.type).filter(type => type))]
+    const unsubscribe = watchInventoryWithUnits(
+      (list) => {
+        setItems(list)
+        const uniqueTypes = [...new Set(list.map(item => item.type).filter(type => type))]
         if (uniqueTypes.length > 0) {
           setTypeOptions(uniqueTypes)
         }
+        setIsLoading(false)
+      },
+      (error) => {
+        console.error('Error fetching items:', error)
+        setIsLoading(false)
       }
-    } catch (error) {
-      console.error('Error fetching items:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const fetchProductUnits = async (inventoryId) => {
-    try {
-      const response = await fetch(`http://localhost:8080/motor-shop/backend/api/get-inventory-units.php?inventory_id=${inventoryId}`)
-      const data = await response.json()
-      if (data.success) {
-        setProductUnits(data.units)
-      }
-    } catch (error) {
-      console.error('Error fetching units:', error)
-    }
-  }
+    )
+    return unsubscribe
+  }, [])
 
   const generateSKU = () => {
     const prefix = 'EM'
@@ -116,6 +123,7 @@ function Inventory() {
     return `${prefix}-${random}`
   }
 
+  // Handle Model Image Upload
   const handleImageUpload = (e) => {
     const file = e.target.files[0]
     if (file) {
@@ -128,6 +136,19 @@ function Inventory() {
     }
   }
 
+  // Handle Part Image Upload
+  const handlePartImageUpload = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      setPartSelectedFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setPartImagePreview(reader.result)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
   const handleEditImageUpload = (e) => {
     const file = e.target.files[0]
     if (file) {
@@ -135,6 +156,19 @@ function Inventory() {
       const reader = new FileReader()
       reader.onloadend = () => {
         setEditImagePreview(reader.result)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  // Handle Edit Part Image Upload
+  const handleEditPartImageUpload = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      setEditPartSelectedFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setEditPartImagePreview(reader.result)
       }
       reader.readAsDataURL(file)
     }
@@ -160,8 +194,8 @@ function Inventory() {
     }
   }
 
-  // UPDATED - WALA NG DESCRIPTION
-  const handleAddItem = async (e) => {
+  // Handle Add Model
+  const handleAddModel = async (e) => {
     e.preventDefault()
     
     if (!newItem.name || !newItem.category || !newItem.type || !newItem.brand || !newItem.price) {
@@ -177,8 +211,8 @@ function Inventory() {
     setIsAdding(true)
 
     Swal.fire({
-      title: 'Adding Product...',
-      text: 'Please wait while we add the product.',
+      title: 'Adding Model...',
+      text: 'Please wait while we add the model.',
       allowOutsideClick: false,
       allowEscapeKey: false,
       allowEnterKey: false,
@@ -189,59 +223,109 @@ function Inventory() {
     })
 
     try {
-      const sku = generateSKU()
-      const formData = new FormData()
-      formData.append('sku', sku)
-      formData.append('name', newItem.name)
-      formData.append('category', newItem.category)
-      formData.append('type', newItem.type)
-      formData.append('brand', newItem.brand)
-      formData.append('price', newItem.price)
-      // WALA NG DESCRIPTION
-      
-      if (selectedFile) {
-        formData.append('image', selectedFile)
-      } else if (newItem.image) {
-        formData.append('image_url', newItem.image)
-      }
+      const itemId = newInventoryId()
+      const imageUrl = selectedFile ? await uploadInventoryImage(itemId, selectedFile) : newItem.image || ''
 
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/add-inventory.php', {
-        method: 'POST',
-        body: formData
+      await createInventoryItem({
+        itemId,
+        isPart: newItem.category === 'Part',
+        sku: generateSKU(),
+        name: newItem.name,
+        brand: newItem.brand,
+        category: newItem.category,
+        type: newItem.type,
+        price: newItem.price,
+        imageUrl,
       })
 
-      const data = await response.json()
+      setShowAddModal(false)
+      setAddItemType(null)
+      setNewItem({ name: '', sku: '', category: 'Motorcycle', type: '', brand: '', price: '', image: '' })
+      setSelectedFile(null)
+      setImagePreview(null)
 
-      if (data.success) {
-        await fetchItems()
-        setShowAddModal(false)
-        setNewItem({ name: '', sku: '', category: 'Motorcycle', type: '', brand: '', price: '', image: '' })
-        setSelectedFile(null)
-        setImagePreview(null)
-        
-        Swal.fire({
-          icon: 'success',
-          title: 'Product Added!',
-          text: `${newItem.name} has been added successfully.`,
-          confirmButtonColor: '#3B82F6',
-          timer: 2000,
-          timerProgressBar: true
-        })
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Failed to add product.',
-          confirmButtonColor: '#3B82F6'
-        })
-      }
+      Swal.fire({
+        icon: 'success',
+        title: 'Model Added!',
+        text: `${newItem.name} has been added successfully.`,
+        timer: 2000,
+        timerProgressBar: true
+      })
     } catch (error) {
       console.error('Error:', error)
       Swal.fire({
         icon: 'error',
-        title: 'Connection Error',
-        text: 'Unable to connect to server.',
+        title: 'Error',
+        text: error.message || 'Failed to add model.'
+      })
+    } finally {
+      setIsAdding(false)
+    }
+  }
+
+  // Handle Add Part (with image and additional fields)
+  const handleAddPart = async (e) => {
+    e.preventDefault()
+    
+    if (!newPart.name || !newPart.quantity || !newPart.price) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Missing Fields',
+        text: 'Please fill in all required fields!',
         confirmButtonColor: '#3B82F6'
+      })
+      return
+    }
+
+    setIsAdding(true)
+
+    Swal.fire({
+      title: 'Adding Part...',
+      text: 'Please wait while we add the part.',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      allowEnterKey: false,
+      showConfirmButton: false,
+      didOpen: () => {
+        Swal.showLoading()
+      }
+    })
+
+    try {
+      const itemId = newInventoryId()
+      const imageUrl = partSelectedFile ? await uploadInventoryImage(itemId, partSelectedFile) : newPart.image || ''
+
+      await createInventoryItem({
+        itemId,
+        isPart: true,
+        sku: generateSKU(),
+        name: newPart.name,
+        price: newPart.price,
+        quantity: newPart.quantity,
+        description: newPart.description,
+        color: newPart.color,
+        imageUrl,
+      })
+
+      setShowAddModal(false)
+      setAddItemType(null)
+      setNewPart({ name: '', quantity: '', price: '', image: '', description: '', color: '', notes: '' })
+      setPartSelectedFile(null)
+      setPartImagePreview(null)
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Part Added!',
+        text: `${newPart.name} has been added successfully with ${newPart.quantity} units.`,
+        timer: 2000,
+        timerProgressBar: true
+      })
+    } catch (error) {
+      console.error('Error:', error)
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to add part.'
       })
     } finally {
       setIsAdding(false)
@@ -262,54 +346,35 @@ function Inventory() {
     }
 
     try {
-      const formData = new FormData()
-      formData.append('inventory_id', selectedProduct.id)
-      formData.append('engine_number', newUnit.engine_number.toUpperCase())
-      formData.append('chassis_number', newUnit.chassis_number.toUpperCase())
-      formData.append('color', newUnit.color)
-      formData.append('notes', newUnit.notes)
-
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/add-inventory-unit.php', {
-        method: 'POST',
-        body: formData
+      await addInventoryUnit({
+        inventoryId: selectedProduct.id,
+        engineNumber: newUnit.engine_number.toUpperCase(),
+        chassisNumber: newUnit.chassis_number.toUpperCase(),
+        color: newUnit.color,
+        notes: newUnit.notes,
       })
 
-      const data = await response.json()
+      setShowUnitModal(false)
+      setNewUnit({ engine_number: '', chassis_number: '', color: '', notes: '' })
+      setExpandedUnits({})
 
-      if (data.success) {
-        await fetchItems()
-        setShowUnitModal(false)
-        setNewUnit({ engine_number: '', chassis_number: '', color: '', notes: '' })
-        setExpandedUnits({})
-        
-        Swal.fire({
-          icon: 'success',
-          title: 'Unit Added!',
-          text: `Unit with engine ${newUnit.engine_number} has been added.`,
-          confirmButtonColor: '#3B82F6',
-          timer: 2000,
-          timerProgressBar: true
-        })
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Failed to add unit.',
-          confirmButtonColor: '#3B82F6'
-        })
-      }
+      Swal.fire({
+        icon: 'success',
+        title: 'Unit Added!',
+        text: `Unit with engine ${newUnit.engine_number} has been added.`,
+        timer: 2000,
+        timerProgressBar: true
+      })
     } catch (error) {
       console.error('Error:', error)
       Swal.fire({
         icon: 'error',
-        title: 'Connection Error',
-        text: 'Unable to connect to server.',
-        confirmButtonColor: '#3B82F6'
+        title: 'Error',
+        text: error.message || 'Failed to add unit.'
       })
     }
   }
 
-  // UPDATED - WALA NG DESCRIPTION
   const handleEditClick = (item) => {
     setEditItem({
       id: item.id,
@@ -319,25 +384,43 @@ function Inventory() {
       type: item.type,
       brand: item.brand || '',
       price: item.price,
-      image: item.image || ''
+      image: item.imageUrl || '',
+      quantity: item.quantity || '',
+      description: item.description || '',
+      color: item.color || '',
+      notes: item.notes || ''
     })
-    setEditImagePreview(item.image || null)
+    setEditImagePreview(item.imageUrl || null)
     setEditSelectedFile(null)
+    setEditPartImagePreview(item.imageUrl || null)
+    setEditPartSelectedFile(null)
     setShowEditModal(true)
   }
 
-  // UPDATED - WALA NG DESCRIPTION
   const handleUpdateItem = async (e) => {
     e.preventDefault()
     
-    if (!editItem.name || !editItem.category || !editItem.type || !editItem.brand || !editItem.price) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Missing Fields',
-        text: 'Please fill in all required fields!',
-        confirmButtonColor: '#3B82F6'
-      })
-      return
+    // Validation based on type
+    if (editItem.category === 'Part') {
+      if (!editItem.name || !editItem.price || !editItem.quantity) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Missing Fields',
+          text: 'Please fill in all required fields for part!',
+          confirmButtonColor: '#3B82F6'
+        })
+        return
+      }
+    } else {
+      if (!editItem.name || !editItem.category || !editItem.type || !editItem.brand || !editItem.price) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Missing Fields',
+          text: 'Please fill in all required fields!',
+          confirmButtonColor: '#3B82F6'
+        })
+        return
+      }
     }
 
     setIsEditing(true)
@@ -355,58 +438,46 @@ function Inventory() {
     })
 
     try {
-      const formData = new FormData()
-      formData.append('id', editItem.id)
-      formData.append('name', editItem.name)
-      formData.append('category', editItem.category)
-      formData.append('type', editItem.type)
-      formData.append('brand', editItem.brand)
-      formData.append('price', editItem.price)
-      // WALA NG DESCRIPTION
-      
-      if (editSelectedFile) {
-        formData.append('image', editSelectedFile)
-      } else if (editItem.image && editItem.image.trim() !== '') {
-        formData.append('image_url', editItem.image)
-      }
+      const isPart = editItem.category === 'Part'
+      const newFile = isPart ? editPartSelectedFile : editSelectedFile
+      const imageUrl = newFile
+        ? await uploadInventoryImage(editItem.id, newFile)
+        : (editItem.image && editItem.image.trim() !== '' ? editItem.image : '')
 
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/update-inventory.php', {
-        method: 'POST',
-        body: formData
+      await updateInventoryItem({
+        itemId: editItem.id,
+        isPart,
+        name: editItem.name,
+        brand: editItem.brand,
+        category: editItem.category,
+        type: editItem.type,
+        price: editItem.price,
+        description: editItem.description,
+        color: editItem.color,
+        quantity: editItem.quantity,
+        imageUrl,
       })
 
-      const data = await response.json()
+      setShowEditModal(false)
+      setEditItem({ id: '', name: '', sku: '', category: '', type: '', brand: '', price: '', image: '', quantity: '', description: '', color: '', notes: '' })
+      setEditImagePreview(null)
+      setEditSelectedFile(null)
+      setEditPartImagePreview(null)
+      setEditPartSelectedFile(null)
 
-      if (data.success) {
-        await fetchItems()
-        setShowEditModal(false)
-        setEditItem({ id: '', name: '', sku: '', category: '', type: '', brand: '', price: '', image: '' })
-        setEditImagePreview(null)
-        setEditSelectedFile(null)
-        
-        Swal.fire({
-          icon: 'success',
-          title: 'Product Updated!',
-          text: `${editItem.name} has been updated successfully.`,
-          confirmButtonColor: '#3B82F6',
-          timer: 2000,
-          timerProgressBar: true
-        })
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Failed to update product.',
-          confirmButtonColor: '#3B82F6'
-        })
-      }
+      Swal.fire({
+        icon: 'success',
+        title: 'Product Updated!',
+        text: `${editItem.name} has been updated successfully.`,
+        timer: 2000,
+        timerProgressBar: true
+      })
     } catch (error) {
       console.error('Error:', error)
       Swal.fire({
         icon: 'error',
-        title: 'Connection Error',
-        text: 'Unable to connect to server.',
-        confirmButtonColor: '#3B82F6'
+        title: 'Error',
+        text: error.message || 'Failed to update product.'
       })
     } finally {
       setIsEditing(false)
@@ -416,7 +487,7 @@ function Inventory() {
   const handleDeleteItem = (item) => {
     Swal.fire({
       title: 'Delete Product',
-      text: `Are you sure you want to delete ${item.name}? This will also delete all individual units.`,
+      text: `Are you sure you want to delete ${item.name}? This will also delete all associated data.`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
@@ -436,55 +507,28 @@ function Inventory() {
         })
 
         try {
-          const formData = new FormData()
-          formData.append('id', item.id)
-
-          const response = await fetch('http://localhost:8080/motor-shop/backend/api/delete-inventory.php', {
-            method: 'POST',
-            body: formData
+          await deleteInventoryItem(item.id)
+          Swal.fire({
+            icon: 'success',
+            title: 'Deleted!',
+            text: `${item.name} has been deleted.`,
+            timer: 2000,
+            timerProgressBar: true
           })
-
-          const data = await response.json()
-
-          if (data.success) {
-            await fetchItems()
-            Swal.fire({
-              icon: 'success',
-              title: 'Deleted!',
-              text: `${item.name} has been deleted.`,
-              confirmButtonColor: '#3B82F6',
-              timer: 2000,
-              timerProgressBar: true
-            })
-          } else {
-            Swal.fire({
-              icon: 'error',
-              title: 'Error',
-              text: data.message || 'Failed to delete product.',
-              confirmButtonColor: '#3B82F6'
-            })
-          }
         } catch (error) {
           console.error('Error:', error)
           Swal.fire({
             icon: 'error',
-            title: 'Connection Error',
-            text: 'Unable to connect to server.',
-            confirmButtonColor: '#3B82F6'
+            title: 'Error',
+            text: error.message || 'Failed to delete product.'
           })
         }
       }
     })
   }
 
-  const toggleUnits = async (item) => {
-    if (expandedUnits[item.id]) {
-      setExpandedUnits(prev => ({ ...prev, [item.id]: false }))
-    } else {
-      setSelectedProduct(item)
-      await fetchProductUnits(item.id)
-      setExpandedUnits(prev => ({ ...prev, [item.id]: true }))
-    }
+  const toggleUnits = (item) => {
+    setExpandedUnits(prev => ({ ...prev, [item.id]: !prev[item.id] }))
   }
 
   const openAddUnitModal = (item) => {
@@ -499,10 +543,22 @@ function Inventory() {
   }
 
   const getStockSummary = (units) => {
-    const available = units.filter(u => u.unit_status === 'Available').length
-    const reserved = units.filter(u => u.unit_status === 'Reserved').length
-    const sold = units.filter(u => u.unit_status === 'Sold').length
+    const available = units.filter(u => u.status === 'Available').length
+    const reserved = units.filter(u => u.status === 'Reserved').length
+    const sold = units.filter(u => u.status === 'Sold').length
     return { available, reserved, sold, total: units.length }
+  }
+
+  // Reset and open add modal
+  const openAddModal = () => {
+    setAddItemType(null)
+    setNewItem({ name: '', sku: '', category: 'Motorcycle', type: '', brand: '', price: '', image: '' })
+    setNewPart({ name: '', quantity: '', price: '', image: '', description: '', color: '', notes: '' })
+    setSelectedFile(null)
+    setImagePreview(null)
+    setPartSelectedFile(null)
+    setPartImagePreview(null)
+    setShowAddModal(true)
   }
 
   // Filter items
@@ -535,6 +591,11 @@ function Inventory() {
   )
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage)
 
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, activeTab, typeFilter, priceFilter])
+
   if (isLoading) {
     return (
       <div className="p-5 flex justify-center items-center h-64">
@@ -549,21 +610,20 @@ function Inventory() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <h2 className="text-xl sm:text-2xl font-bold text-[#0b1c30]">Inventory Management</h2>
-          <p className="text-sm sm:text-base text-[#45464d] mt-1">Manage motorcycle models and individual units with engine/chassis numbers.</p>
+          <p className="text-sm sm:text-base text-[#45464d] mt-1">Manage motorcycle models, parts, and individual units.</p>
         </div>
         <button 
-          onClick={() => setShowAddModal(true)}
+          onClick={openAddModal}
           className="flex items-center gap-2 bg-black text-white px-3 py-2 sm:px-4 rounded-lg text-xs font-semibold tracking-wide hover:opacity-90 transition-all shadow-sm active:scale-95 w-full sm:w-auto justify-center"
         >
           <span className="material-symbols-outlined text-base">add</span>
-          Add New Model
+          Add New Item
         </button>
       </div>
 
       <div className="bg-white rounded-xl border border-[#c6c6cd] shadow-sm overflow-hidden">
         {/* Filters Section */}
         <div className="p-4 border-b border-[#c6c6cd] bg-[#f8f9ff]">
-          {/* Mobile Filter Toggle */}
           <div className="lg:hidden flex items-center justify-between mb-3">
             <button
               onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
@@ -573,18 +633,17 @@ function Inventory() {
               Filters {mobileFiltersOpen ? '▲' : '▼'}
             </button>
             <div className="text-sm text-[#45464d]">
-              {filteredItems.length} of {items.length} models
+              {filteredItems.length} of {items.length} items
             </div>
           </div>
 
-          {/* Filters Content */}
           <div className={`${mobileFiltersOpen ? 'block' : 'hidden'} lg:block space-y-4`}>
             <div className="flex flex-col lg:flex-row gap-3">
               <div className="relative flex-1 min-w-[200px]">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#76777d] text-base">search</span>
                 <input 
                   className="w-full pl-10 pr-4 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:ring-2 focus:ring-black/10 focus:border-black outline-none transition-all" 
-                  placeholder="Search by model, SKU, brand..." 
+                  placeholder="Search by name, SKU..." 
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -678,33 +737,43 @@ function Inventory() {
           </div>
         </div>
 
-        {/* Grid View with Units */}
+        {/* Grid View */}
         {viewMode === 'grid' && (
           <>
             <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               {paginatedItems.length === 0 ? (
                 <div className="col-span-full text-center py-12">
                   <span className="material-symbols-outlined text-5xl text-gray-400">search_off</span>
-                  <p className="text-gray-500 mt-2">No models found matching your search.</p>
+                  <p className="text-gray-500 mt-2">No items found matching your search.</p>
                 </div>
               ) : (
                 paginatedItems.map((item) => {
                   const units = item.units || []
                   const stockSummary = getStockSummary(units)
                   const isExpanded = expandedUnits[item.id]
+                  const isPart = item.category === 'Part'
                   
                   return (
                     <div key={item.id} className="flex flex-col border border-[#c6c6cd] rounded-xl overflow-hidden hover:shadow-md transition-shadow group">
                       <div className="aspect-[4/3] bg-[#e5eeff] relative overflow-hidden">
-                        <img alt={item.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" src={item.image || 'https://via.placeholder.com/400x300?text=No+Image'} />
+                        <img alt={item.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" src={item.imageUrl || 'https://via.placeholder.com/400x300?text=No+Image'} />
+                        {isPart && (
+                          <span className="absolute top-2 right-2 bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-full">
+                            Part
+                          </span>
+                        )}
                       </div>
                       <div className="p-4 flex flex-col gap-3 flex-1">
                         <div className="flex justify-between items-start gap-2">
                           <div className="flex flex-col flex-1 min-w-0">
                             <h3 className="text-base font-semibold text-[#0b1c30] truncate">{item.name}</h3>
                             <div className="flex gap-1 mt-1">
-                              <span className="text-[10px] text-[#45464d]">{item.brand}</span>
-                              <span className="text-[10px] text-[#45464d]">•</span>
+                              {!isPart && (
+                                <>
+                                  <span className="text-[10px] text-[#45464d]">{item.brand}</span>
+                                  <span className="text-[10px] text-[#45464d]">•</span>
+                                </>
+                              )}
                               <span className="font-mono text-[10px] text-[#45464d]">{item.sku}</span>
                             </div>
                           </div>
@@ -713,101 +782,117 @@ function Inventory() {
                         
                         <div className="flex gap-1 flex-wrap">
                           <span className="px-2 py-0.5 bg-[#dce9ff] text-[#45464d] rounded text-[11px] font-medium">{item.category}</span>
-                          <span className="px-2 py-0.5 bg-[#dce9ff] text-[#45464d] rounded text-[11px] font-medium">{item.type}</span>
+                          {!isPart && (
+                            <span className="px-2 py-0.5 bg-[#dce9ff] text-[#45464d] rounded text-[11px] font-medium">{item.type}</span>
+                          )}
+                          {isPart && item.quantity && (
+                            <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-[11px] font-medium">
+                              Qty: {item.quantity}
+                            </span>
+                          )}
                         </div>
 
-                        {/* Individual Units Section */}
-                        <div className="mt-2 bg-[#f8f9ff] rounded-lg border border-[#c6c6cd] overflow-hidden">
-                          <div className="flex justify-between items-center p-2 bg-[#e5eeff]">
-                            <span className="text-[10px] font-bold text-[#45464d] uppercase tracking-wide">
-                              Individual Units ({stockSummary.total})
-                            </span>
-                            <button 
-                              onClick={() => openAddUnitModal(item)}
-                              className="flex items-center gap-1 text-black hover:bg-black/10 px-2 py-1 rounded text-[10px] font-semibold transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-sm">add</span>
-                              Add Unit
-                            </button>
-                          </div>
-                          
-                          {isExpanded && units.length > 0 ? (
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-left text-[11px]">
-                                <thead className="bg-white border-b border-[#c6c6cd]">
-                                  <tr>
-                                    <th className="px-2 py-1.5">Engine #</th>
-                                    <th className="px-2 py-1.5">Chassis #</th>
-                                    <th className="px-2 py-1.5">Color</th>
-                                    <th className="px-2 py-1.5">Status</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-[#c6c6cd]/50">
-                                  {units.slice(0, 3).map((unit) => (
-                                    <tr key={unit.id} className="hover:bg-[#e5eeff]/50">
-                                      <td className="px-2 py-1.5 font-mono text-[10px]">{unit.engine_number}</td>
-                                      <td className="px-2 py-1.5 font-mono text-[10px]">{unit.chassis_number}</td>
-                                      <td className="px-2 py-1.5">
-                                        {unit.color && (
-                                          <span className="inline-block w-3 h-3 rounded-full mr-1" style={{ backgroundColor: unit.color.toLowerCase() }}></span>
-                                        )}
-                                        {unit.color || '—'}
-                                      </td>
-                                      <td className="px-2 py-1.5">
-                                        <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${getUnitStatusBg(unit.unit_status)} ${getUnitStatusColor(unit.unit_status)}`}>
-                                          {unit.unit_status}
-                                        </span>
-                                      </td>
+                        {/* Individual Units Section - only for motorcycles */}
+                        {!isPart && (
+                          <div className="mt-2 bg-[#f8f9ff] rounded-lg border border-[#c6c6cd] overflow-hidden">
+                            <div className="flex justify-between items-center p-2 bg-[#e5eeff]">
+                              <span className="text-[10px] font-bold text-[#45464d] uppercase tracking-wide">
+                                Individual Units ({stockSummary.total})
+                              </span>
+                              <button 
+                                onClick={() => openAddUnitModal(item)}
+                                className="flex items-center gap-1 text-black hover:bg-black/10 px-2 py-1 rounded text-[10px] font-semibold transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-sm">add</span>
+                                Add Unit
+                              </button>
+                            </div>
+                            
+                            {isExpanded && units.length > 0 ? (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left text-[11px]">
+                                  <thead className="bg-white border-b border-[#c6c6cd]">
+                                    <tr>
+                                      <th className="px-2 py-1.5">Engine #</th>
+                                      <th className="px-2 py-1.5">Chassis #</th>
+                                      <th className="px-2 py-1.5">Color</th>
+                                      <th className="px-2 py-1.5">Status</th>
                                     </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                              {units.length > 3 && (
-                                <div className="text-center py-1.5 bg-white border-t border-[#c6c6cd]">
-                                  <span className="text-[10px] text-[#45464d]">+{units.length - 3} more units</span>
-                                </div>
-                              )}
-                            </div>
-                          ) : units.length > 0 ? (
-                            <div className="p-2 text-center">
-                              <div className="flex gap-2 justify-center text-[10px]">
-                                <span className="text-green-600">✓ {stockSummary.available} Available</span>
-                                <span className="text-amber-600">⏳ {stockSummary.reserved} Reserved</span>
-                                <span className="text-blue-600">✓ {stockSummary.sold} Sold</span>
+                                  </thead>
+                                  <tbody className="divide-y divide-[#c6c6cd]/50">
+                                    {units.slice(0, 3).map((unit) => (
+                                      <tr key={unit.id} className="hover:bg-[#e5eeff]/50">
+                                        <td className="px-2 py-1.5 font-mono text-[10px]">{unit.engineNumber}</td>
+                                        <td className="px-2 py-1.5 font-mono text-[10px]">{unit.chassisNumber}</td>
+                                        <td className="px-2 py-1.5">
+                                          {unit.color && (
+                                            <span className="inline-block w-3 h-3 rounded-full mr-1" style={{ backgroundColor: unit.color.toLowerCase() }}></span>
+                                          )}
+                                          {unit.color || '—'}
+                                        </td>
+                                        <td className="px-2 py-1.5">
+                                          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${getUnitStatusBg(unit.status)} ${getUnitStatusColor(unit.status)}`}>
+                                            {unit.status}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                                {units.length > 3 && (
+                                  <div className="text-center py-1.5 bg-white border-t border-[#c6c6cd]">
+                                    <span className="text-[10px] text-[#45464d]">+{units.length - 3} more units</span>
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          ) : (
-                            <div className="p-3 text-center text-[11px] text-[#45464d]">
-                              No units added yet. Click "Add Unit" to add individual units.
-                            </div>
-                          )}
-                          
-                          {units.length > 0 && (
-                            <button 
-                              onClick={() => toggleUnits(item)}
-                              className="w-full text-center py-1.5 border-t border-[#c6c6cd] bg-white text-[10px] font-semibold text-[#45464d] hover:text-black hover:bg-[#e5eeff] transition-colors"
-                            >
-                              {isExpanded ? '▲ Hide Units' : '▼ View All Units'}
-                            </button>
-                          )}
-                        </div>
+                            ) : units.length > 0 ? (
+                              <div className="p-2 text-center">
+                                <div className="flex gap-2 justify-center text-[10px]">
+                                  <span className="text-green-600">✓ {stockSummary.available} Available</span>
+                                  <span className="text-amber-600">⏳ {stockSummary.reserved} Reserved</span>
+                                  <span className="text-blue-600">✓ {stockSummary.sold} Sold</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="p-3 text-center text-[11px] text-[#45464d]">
+                                No units added yet. Click "Add Unit" to add individual units.
+                              </div>
+                            )}
+                            
+                            {units.length > 0 && (
+                              <button 
+                                onClick={() => toggleUnits(item)}
+                                className="w-full text-center py-1.5 border-t border-[#c6c6cd] bg-white text-[10px] font-semibold text-[#45464d] hover:text-black hover:bg-[#e5eeff] transition-colors"
+                              >
+                                {isExpanded ? '▲ Hide Units' : '▼ View All Units'}
+                              </button>
+                            )}
+                          </div>
+                        )}
 
                         <div className="mt-auto flex items-center justify-between pt-2 border-t border-[#c6c6cd]">
                           <div className="flex gap-1">
-                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${
-                              stockSummary.available > 0 ? 'bg-green-100 text-green-700' : 
-                              stockSummary.available === 0 && stockSummary.total > 0 ? 'bg-red-100 text-red-700' : 
-                              'bg-gray-100 text-gray-700'
-                            }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${
-                                stockSummary.available > 0 ? 'bg-green-600' : 
-                                stockSummary.available === 0 && stockSummary.total > 0 ? 'bg-red-600' : 
-                                'bg-gray-600'
-                              }`}></span>
-                              {stockSummary.available > 0 ? `${stockSummary.available} In Stock` : 
-                               stockSummary.available === 0 && stockSummary.total > 0 ? 'Out of Stock' : 
-                               'No Units'}
-                            </span>
+                            {!isPart ? (
+                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${
+                                stockSummary.available > 0 ? 'bg-green-100 text-green-700' : 
+                                stockSummary.available === 0 && stockSummary.total > 0 ? 'bg-red-100 text-red-700' : 
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                  stockSummary.available > 0 ? 'bg-green-600' : 
+                                  stockSummary.available === 0 && stockSummary.total > 0 ? 'bg-red-600' : 
+                                  'bg-gray-600'
+                                }`}></span>
+                                {stockSummary.available > 0 ? `${stockSummary.available} In Stock` : 
+                                 stockSummary.available === 0 && stockSummary.total > 0 ? 'Out of Stock' : 
+                                 'No Units'}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-600"></span>
+                                {item.quantity || 0} in Stock
+                              </span>
+                            )}
                           </div>
                           <div className="flex gap-2">
                             <button onClick={() => handleEditClick(item)} className="p-1 hover:text-black transition-colors">
@@ -829,7 +914,7 @@ function Inventory() {
             {filteredItems.length > itemsPerPage && (
               <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#f8f9ff] border-t border-[#c6c6cd]">
                 <span className="text-sm text-[#45464d]">
-                  Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} models
+                  Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} items
                 </span>
                 <div className="flex items-center gap-1">
                   <button 
@@ -884,11 +969,11 @@ function Inventory() {
               <table className="w-full text-left min-w-[800px]">
                 <thead>
                   <tr className="bg-black text-white">
-                    <th className="px-4 py-3 text-xs font-semibold tracking-wide">Model</th>
+                    <th className="px-4 py-3 text-xs font-semibold tracking-wide">Item</th>
                     <th className="px-4 py-3 text-xs font-semibold tracking-wide hidden sm:table-cell">SKU</th>
-                    <th className="px-4 py-3 text-xs font-semibold tracking-wide hidden md:table-cell">Brand</th>
-                    <th className="px-4 py-3 text-xs font-semibold tracking-wide">Type</th>
-                    <th className="px-4 py-3 text-xs font-semibold tracking-wide">Units</th>
+                    <th className="px-4 py-3 text-xs font-semibold tracking-wide hidden md:table-cell">Brand/Type</th>
+                    <th className="px-4 py-3 text-xs font-semibold tracking-wide">Category</th>
+                    <th className="px-4 py-3 text-xs font-semibold tracking-wide">Stock</th>
                     <th className="px-4 py-3 text-xs font-semibold tracking-wide text-right">Price</th>
                     <th className="px-4 py-3 text-xs font-semibold tracking-wide text-center">Actions</th>
                   </tr>
@@ -898,20 +983,21 @@ function Inventory() {
                     <tr>
                       <td colSpan="7" className="text-center py-12">
                         <span className="material-symbols-outlined text-5xl text-gray-400">search_off</span>
-                        <p className="text-gray-500 mt-2">No models found matching your search.</p>
+                        <p className="text-gray-500 mt-2">No items found matching your search.</p>
                       </td>
                     </tr>
                   ) : (
                     paginatedItems.map((item) => {
                       const units = item.units || []
                       const stockSummary = getStockSummary(units)
+                      const isPart = item.category === 'Part'
                       
                       return (
                         <tr key={item.id} className="hover:bg-[#f8f9ff] transition-colors">
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-lg bg-[#e5eeff] overflow-hidden flex-shrink-0">
-                                <img src={item.image || 'https://via.placeholder.com/40x40?text=No+Img'} alt={item.name} className="w-full h-full object-cover" />
+                                <img src={item.imageUrl || 'https://via.placeholder.com/40x40?text=No+Img'} alt={item.name} className="w-full h-full object-cover" />
                               </div>
                               <div className="font-medium text-sm">{item.name}</div>
                             </div>
@@ -919,33 +1005,49 @@ function Inventory() {
                           <td className="px-4 py-3 hidden sm:table-cell">
                             <span className="font-mono text-xs text-[#45464d]">{item.sku}</span>
                           </td>
-                          <td className="px-4 py-3 hidden md:table-cell text-sm">{item.brand || '—'}</td>
-                          <td className="px-4 py-3 text-sm">{item.type}</td>
+                          <td className="px-4 py-3 hidden md:table-cell text-sm">
+                            {isPart ? '—' : (item.brand || '—')}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className={`px-2 py-1 rounded-full text-[10px] font-semibold ${
+                              isPart ? 'bg-blue-100 text-blue-700' : 'bg-[#dce9ff] text-[#45464d]'
+                            }`}>
+                              {item.category}
+                            </span>
+                          </td>
                           <td className="px-4 py-3">
-                            <div className="flex gap-1">
-                              {stockSummary.available > 0 && (
-                                <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
-                                  {stockSummary.available} Avail
-                                </span>
-                              )}
-                              {stockSummary.reserved > 0 && (
-                                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium">
-                                  {stockSummary.reserved} Reserved
-                                </span>
-                              )}
-                              {stockSummary.sold > 0 && (
-                                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-medium">
-                                  {stockSummary.sold} Sold
-                                </span>
-                              )}
-                            </div>
+                            {isPart ? (
+                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-medium">
+                                {item.quantity || 0} units
+                              </span>
+                            ) : (
+                              <div className="flex gap-1">
+                                {stockSummary.available > 0 && (
+                                  <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
+                                    {stockSummary.available} Avail
+                                  </span>
+                                )}
+                                {stockSummary.reserved > 0 && (
+                                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium">
+                                    {stockSummary.reserved} Reserved
+                                  </span>
+                                )}
+                                {stockSummary.sold > 0 && (
+                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-medium">
+                                    {stockSummary.sold} Sold
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-right font-medium text-sm">₱{parseFloat(item.price).toLocaleString()}</td>
                           <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center gap-2">
-                              <button onClick={() => openAddUnitModal(item)} className="p-1 hover:text-green-600 transition-colors" title="Add Unit">
-                                <span className="material-symbols-outlined text-base">add_box</span>
-                              </button>
+                              {!isPart && (
+                                <button onClick={() => openAddUnitModal(item)} className="p-1 hover:text-green-600 transition-colors" title="Add Unit">
+                                  <span className="material-symbols-outlined text-base">add_box</span>
+                                </button>
+                              )}
                               <button onClick={() => handleEditClick(item)} className="p-1 hover:text-black transition-colors">
                                 <span className="material-symbols-outlined text-base">edit</span>
                               </button>
@@ -966,7 +1068,7 @@ function Inventory() {
             {filteredItems.length > itemsPerPage && (
               <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#f8f9ff] border-t border-[#c6c6cd]">
                 <span className="text-sm text-[#45464d]">
-                  Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} models
+                  Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} items
                 </span>
                 <div className="flex items-center gap-1">
                   <button 
@@ -1028,14 +1130,22 @@ function Inventory() {
         </div>
       </div>
 
-      {/* Add Product Modal - WALA NG DESCRIPTION */}
+      {/* Add Item Modal - with Type Selection */}
       {showAddModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-[#131b2e]/40 backdrop-blur-sm" onClick={() => setShowAddModal(false)}></div>
+          <div className="absolute inset-0 bg-[#131b2e]/40 backdrop-blur-sm" onClick={() => {
+            setShowAddModal(false)
+            setAddItemType(null)
+          }}></div>
           <div className="relative w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden transform transition-all duration-300 scale-100 opacity-100">
             <div className="bg-black text-white p-4 flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Add New Model</h3>
-              <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+              <h3 className="text-lg font-semibold">
+                {!addItemType ? 'Add New Item' : addItemType === 'model' ? 'Add New Model' : 'Add New Part'}
+              </h3>
+              <button onClick={() => {
+                setShowAddModal(false)
+                setAddItemType(null)
+              }} className="p-1 hover:bg-white/10 rounded-full transition-colors">
                 <span className="material-symbols-outlined text-base">close</span>
               </button>
             </div>
@@ -1046,127 +1156,299 @@ function Inventory() {
                   <div className="w-16 h-16 border-4 border-gray-200 rounded-full"></div>
                   <div className="absolute top-0 left-0 w-16 h-16 border-4 border-black rounded-full animate-spin border-t-transparent"></div>
                 </div>
-                <p className="mt-4 text-gray-600 font-medium">Adding model...</p>
+                <p className="mt-4 text-gray-600 font-medium">
+                  {addItemType === 'model' ? 'Adding model...' : 'Adding part...'}
+                </p>
                 <p className="mt-1 text-gray-400 text-sm">Please wait</p>
               </div>
             ) : (
-              <form onSubmit={handleAddItem} className="p-6 flex flex-col gap-4 max-h-[calc(90vh-80px)] overflow-y-auto">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-semibold tracking-wide text-[#45464d]">Model Name *</label>
-                  <input 
-                    className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
-                    placeholder="e.g. Yamaha R1" 
-                    type="text"
-                    value={newItem.name}
-                    onChange={(e) => setNewItem({...newItem, name: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-semibold tracking-wide text-[#45464d]">Brand *</label>
-                    <input 
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
-                      placeholder="e.g. Yamaha" 
-                      type="text"
-                      value={newItem.brand}
-                      onChange={(e) => setNewItem({...newItem, brand: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-semibold tracking-wide text-[#45464d]">Category *</label>
-                    <select 
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none bg-white focus:ring-2 focus:ring-black/10"
-                      value={newItem.category}
-                      onChange={(e) => setNewItem({...newItem, category: e.target.value})}
+              <>
+                {/* Step 1: Choose Model or Part */}
+                {!addItemType ? (
+                  <div className="p-6 flex flex-col gap-4">
+                    <p className="text-sm text-[#45464d] text-center mb-2">What would you like to add?</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        onClick={() => setAddItemType('model')}
+                        className="flex flex-col items-center justify-center p-6 border-2 border-[#c6c6cd] rounded-xl hover:border-black hover:bg-[#f8f9ff] transition-all"
+                      >
+                        <span className="material-symbols-outlined text-4xl text-[#0b1c30]">motorcycle</span>
+                        <span className="mt-2 font-semibold text-[#0b1c30]">Model</span>
+                        <span className="text-[10px] text-[#45464d] text-center mt-1">Motorcycle model with individual units</span>
+                      </button>
+                      <button
+                        onClick={() => setAddItemType('part')}
+                        className="flex flex-col items-center justify-center p-6 border-2 border-[#c6c6cd] rounded-xl hover:border-black hover:bg-[#f8f9ff] transition-all"
+                      >
+                        <span className="material-symbols-outlined text-4xl text-[#0b1c30]">build</span>
+                        <span className="mt-2 font-semibold text-[#0b1c30]">Part</span>
+                        <span className="text-[10px] text-[#45464d] text-center mt-1">Parts with name, quantity, price, and image</span>
+                      </button>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setShowAddModal(false)
+                        setAddItemType(null)
+                      }}
+                      className="mt-2 px-4 py-2 text-xs font-semibold tracking-wide text-[#45464d] hover:bg-[#eff4ff] rounded-lg transition-colors"
                     >
-                      <option value="Motorcycle">Motorcycle</option>
-                      <option value="Part">Part</option>
-                    </select>
+                      Cancel
+                    </button>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-semibold tracking-wide text-[#45464d]">Type *</label>
-                    <input 
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
-                      placeholder="e.g. Sport" 
-                      type="text"
-                      value={newItem.type}
-                      onChange={(e) => setNewItem({...newItem, type: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-semibold tracking-wide text-[#45464d]">Base Price (₱) *</label>
-                    <input 
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
-                      placeholder="0.00" 
-                      type="number"
-                      step="0.01"
-                      value={newItem.price}
-                      onChange={(e) => setNewItem({...newItem, price: e.target.value})}
-                      required
-                    />
-                  </div>
-                </div>
-                {/* WALA NG DESCRIPTION FIELD */}
-                
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-semibold tracking-wide text-[#45464d]">Model Image</label>
-                  <div className="flex flex-col items-center gap-3">
-                    {imagePreview ? (
-                      <div className="relative w-full">
-                        <img src={imagePreview} alt="Preview" className="w-full h-40 object-cover rounded-lg border border-[#c6c6cd]" />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedFile(null)
-                            setImagePreview(null)
-                            setNewItem({...newItem, image: ''})
-                          }}
-                          className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-sm">close</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <label className="w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-[#c6c6cd] rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                        <span className="material-symbols-outlined text-3xl text-gray-400">cloud_upload</span>
-                        <span className="text-xs text-gray-500 mt-1 text-center">Click to upload image</span>
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept="image/*"
-                          onChange={handleImageUpload}
+                ) : addItemType === 'model' ? (
+                  /* Step 2a: Add Model Form */
+                  <form onSubmit={handleAddModel} className="p-6 flex flex-col gap-4 max-h-[calc(90vh-80px)] overflow-y-auto">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold tracking-wide text-[#45464d]">Model Name *</label>
+                      <input 
+                        className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
+                        placeholder="e.g. Yamaha R1" 
+                        type="text"
+                        value={newItem.name}
+                        onChange={(e) => setNewItem({...newItem, name: e.target.value})}
+                        required
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Brand *</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
+                          placeholder="e.g. Yamaha" 
+                          type="text"
+                          value={newItem.brand}
+                          onChange={(e) => setNewItem({...newItem, brand: e.target.value})}
+                          required
                         />
-                      </label>
-                    )}
-                    <span className="text-[10px] text-gray-400">— OR —</span>
-                    <input 
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
-                      placeholder="Enter image URL" 
-                      type="text"
-                      value={newItem.image}
-                      onChange={(e) => setNewItem({...newItem, image: e.target.value})}
-                    />
-                  </div>
-                </div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Category *</label>
+                        <select 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none bg-white focus:ring-2 focus:ring-black/10"
+                          value={newItem.category}
+                          onChange={(e) => setNewItem({...newItem, category: e.target.value})}
+                        >
+                          <option value="Motorcycle">Motorcycle</option>
+                          <option value="Part">Part</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Type *</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
+                          placeholder="e.g. Sport" 
+                          type="text"
+                          value={newItem.type}
+                          onChange={(e) => setNewItem({...newItem, type: e.target.value})}
+                          required
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Base Price (₱) *</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
+                          placeholder="0.00" 
+                          type="number"
+                          step="0.01"
+                          value={newItem.price}
+                          onChange={(e) => setNewItem({...newItem, price: e.target.value})}
+                          required
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold tracking-wide text-[#45464d]">Model Image</label>
+                      <div className="flex flex-col items-center gap-3">
+                        {imagePreview ? (
+                          <div className="relative w-full">
+                            <img src={imagePreview} alt="Preview" className="w-full h-40 object-cover rounded-lg border border-[#c6c6cd]" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedFile(null)
+                                setImagePreview(null)
+                                setNewItem({...newItem, image: ''})
+                              }}
+                              className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-sm">close</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-[#c6c6cd] rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                            <span className="material-symbols-outlined text-3xl text-gray-400">cloud_upload</span>
+                            <span className="text-xs text-gray-500 mt-1 text-center">Click to upload image</span>
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept="image/*"
+                              onChange={handleImageUpload}
+                            />
+                          </label>
+                        )}
+                        <span className="text-[10px] text-gray-400">— OR —</span>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
+                          placeholder="Enter image URL" 
+                          type="text"
+                          value={newItem.image}
+                          onChange={(e) => setNewItem({...newItem, image: e.target.value})}
+                        />
+                      </div>
+                    </div>
 
-                <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-[#c6c6cd]">
-                  <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-xs font-semibold tracking-wide text-[#0b1c30] hover:bg-[#eff4ff] rounded-lg transition-colors">
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    disabled={isAdding} 
-                    className="px-4 py-2 text-xs font-semibold tracking-wide bg-black text-white rounded-lg shadow-sm hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Add Model
-                  </button>
-                </div>
-              </form>
+                    <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-[#c6c6cd]">
+                      <button type="button" onClick={() => setAddItemType(null)} className="px-4 py-2 text-xs font-semibold tracking-wide text-[#0b1c30] hover:bg-[#eff4ff] rounded-lg transition-colors">
+                        Back
+                      </button>
+                      <button 
+                        type="submit" 
+                        disabled={isAdding} 
+                        className="px-4 py-2 text-xs font-semibold tracking-wide bg-black text-white rounded-lg shadow-sm hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Add Model
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  /* Step 2b: Add Part Form with additional fields */
+                  <form onSubmit={handleAddPart} className="p-6 flex flex-col gap-4 max-h-[calc(90vh-80px)] overflow-y-auto">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold tracking-wide text-[#45464d]">Part Name *</label>
+                      <input 
+                        className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
+                        placeholder="e.g. Brake Pads, Oil Filter" 
+                        type="text"
+                        value={newPart.name}
+                        onChange={(e) => setNewPart({...newPart, name: e.target.value})}
+                        required
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Quantity *</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
+                          placeholder="0" 
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={newPart.quantity}
+                          onChange={(e) => setNewPart({...newPart, quantity: e.target.value})}
+                          required
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Price (₱) *</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
+                          placeholder="0.00" 
+                          type="number"
+                          step="0.01"
+                          value={newPart.price}
+                          onChange={(e) => setNewPart({...newPart, price: e.target.value})}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold tracking-wide text-[#45464d]">Description</label>
+                      <textarea
+                        className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10"
+                        placeholder="Part description..."
+                        rows="2"
+                        value={newPart.description}
+                        onChange={(e) => setNewPart({...newPart, description: e.target.value})}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Color</label>
+                        <select
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none bg-white"
+                          value={newPart.color}
+                          onChange={(e) => setNewPart({...newPart, color: e.target.value})}
+                        >
+                          <option value="">Select color...</option>
+                          {colorOptions.map(color => (
+                            <option key={color} value={color}>{color}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Notes</label>
+                        <input
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10"
+                          placeholder="Additional notes..."
+                          type="text"
+                          value={newPart.notes}
+                          onChange={(e) => setNewPart({...newPart, notes: e.target.value})}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold tracking-wide text-[#45464d]">Part Image</label>
+                      <div className="flex flex-col items-center gap-3">
+                        {partImagePreview ? (
+                          <div className="relative w-full">
+                            <img src={partImagePreview} alt="Preview" className="w-full h-40 object-cover rounded-lg border border-[#c6c6cd]" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPartSelectedFile(null)
+                                setPartImagePreview(null)
+                                setNewPart({...newPart, image: ''})
+                              }}
+                              className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-sm">close</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-[#c6c6cd] rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                            <span className="material-symbols-outlined text-3xl text-gray-400">cloud_upload</span>
+                            <span className="text-xs text-gray-500 mt-1 text-center">Click to upload image</span>
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept="image/*"
+                              onChange={handlePartImageUpload}
+                            />
+                          </label>
+                        )}
+                        <span className="text-[10px] text-gray-400">— OR —</span>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10" 
+                          placeholder="Enter image URL" 
+                          type="text"
+                          value={newPart.image}
+                          onChange={(e) => setNewPart({...newPart, image: e.target.value})}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-[#c6c6cd]">
+                      <button type="button" onClick={() => setAddItemType(null)} className="px-4 py-2 text-xs font-semibold tracking-wide text-[#0b1c30] hover:bg-[#eff4ff] rounded-lg transition-colors">
+                        Back
+                      </button>
+                      <button 
+                        type="submit" 
+                        disabled={isAdding} 
+                        className="px-4 py-2 text-xs font-semibold tracking-wide bg-black text-white rounded-lg shadow-sm hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Add Part
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -1251,13 +1533,15 @@ function Inventory() {
         </div>
       )}
 
-      {/* Edit Product Modal - WALA NG DESCRIPTION */}
+      {/* Edit Product Modal */}
       {showEditModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-[#131b2e]/40 backdrop-blur-sm" onClick={() => setShowEditModal(false)}></div>
           <div className="relative w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden">
             <div className="bg-black text-white p-4 flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Edit Model</h3>
+              <h3 className="text-lg font-semibold">
+                {editItem.category === 'Part' ? 'Edit Part' : 'Edit Model'}
+              </h3>
               <button onClick={() => setShowEditModal(false)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
                 <span className="material-symbols-outlined text-base">close</span>
               </button>
@@ -1269,13 +1553,15 @@ function Inventory() {
                   <div className="w-16 h-16 border-4 border-gray-200 rounded-full"></div>
                   <div className="absolute top-0 left-0 w-16 h-16 border-4 border-black rounded-full animate-spin border-t-transparent"></div>
                 </div>
-                <p className="mt-4 text-gray-600 font-medium">Updating model...</p>
+                <p className="mt-4 text-gray-600 font-medium">Updating product...</p>
                 <p className="mt-1 text-gray-400 text-sm">Please wait</p>
               </div>
             ) : (
               <form onSubmit={handleUpdateItem} className="p-6 flex flex-col gap-4 max-h-[calc(90vh-80px)] overflow-y-auto">
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs font-semibold tracking-wide text-[#45464d]">Model Name *</label>
+                  <label className="text-xs font-semibold tracking-wide text-[#45464d]">
+                    {editItem.category === 'Part' ? 'Part Name' : 'Model Name'} *
+                  </label>
                   <input 
                     className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
                     type="text"
@@ -1284,66 +1570,148 @@ function Inventory() {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-semibold tracking-wide text-[#45464d]">Brand *</label>
-                    <input 
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
-                      type="text"
-                      value={editItem.brand}
-                      onChange={(e) => setEditItem({...editItem, brand: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-semibold tracking-wide text-[#45464d]">Category *</label>
-                    <select 
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none bg-white"
-                      value={editItem.category}
-                      onChange={(e) => setEditItem({...editItem, category: e.target.value})}
-                    >
-                      <option value="Motorcycle">Motorcycle</option>
-                      <option value="Part">Part</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-semibold tracking-wide text-[#45464d]">Type *</label>
-                    <input 
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
-                      type="text"
-                      value={editItem.type}
-                      onChange={(e) => setEditItem({...editItem, type: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-semibold tracking-wide text-[#45464d]">Base Price (₱) *</label>
-                    <input 
-                      className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
-                      type="number"
-                      step="0.01"
-                      value={editItem.price}
-                      onChange={(e) => setEditItem({...editItem, price: e.target.value})}
-                      required
-                    />
-                  </div>
-                </div>
-                {/* WALA NG DESCRIPTION FIELD */}
+
+                {editItem.category !== 'Part' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Brand *</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
+                          type="text"
+                          value={editItem.brand}
+                          onChange={(e) => setEditItem({...editItem, brand: e.target.value})}
+                          required
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Category *</label>
+                        <select 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none bg-white"
+                          value={editItem.category}
+                          onChange={(e) => setEditItem({...editItem, category: e.target.value})}
+                        >
+                          <option value="Motorcycle">Motorcycle</option>
+                          <option value="Part">Part</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Type *</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
+                          type="text"
+                          value={editItem.type}
+                          onChange={(e) => setEditItem({...editItem, type: e.target.value})}
+                          required
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Price (₱) *</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
+                          type="number"
+                          step="0.01"
+                          value={editItem.price}
+                          onChange={(e) => setEditItem({...editItem, price: e.target.value})}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {editItem.category === 'Part' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Quantity *</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={editItem.quantity}
+                          onChange={(e) => setEditItem({...editItem, quantity: e.target.value})}
+                          required
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Price (₱) *</label>
+                        <input 
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none" 
+                          type="number"
+                          step="0.01"
+                          value={editItem.price}
+                          onChange={(e) => setEditItem({...editItem, price: e.target.value})}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold tracking-wide text-[#45464d]">Description</label>
+                      <textarea
+                        className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none"
+                        placeholder="Part description..."
+                        rows="2"
+                        value={editItem.description}
+                        onChange={(e) => setEditItem({...editItem, description: e.target.value})}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Color</label>
+                        <select
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none bg-white"
+                          value={editItem.color}
+                          onChange={(e) => setEditItem({...editItem, color: e.target.value})}
+                        >
+                          <option value="">Select color...</option>
+                          {colorOptions.map(color => (
+                            <option key={color} value={color}>{color}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">Notes</label>
+                        <input
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none"
+                          placeholder="Additional notes..."
+                          type="text"
+                          value={editItem.notes}
+                          onChange={(e) => setEditItem({...editItem, notes: e.target.value})}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
                 
+                {/* Image upload */}
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs font-semibold tracking-wide text-[#45464d]">Model Image</label>
+                  <label className="text-xs font-semibold tracking-wide text-[#45464d]">Product Image</label>
                   <div className="flex flex-col items-center gap-3">
-                    {editImagePreview ? (
+                    {(editItem.category === 'Part' ? editPartImagePreview : editImagePreview) ? (
                       <div className="relative w-full">
-                        <img src={editImagePreview} alt="Preview" className="w-full h-40 object-cover rounded-lg border border-[#c6c6cd]" />
+                        <img 
+                          src={editItem.category === 'Part' ? editPartImagePreview : editImagePreview} 
+                          alt="Preview" 
+                          className="w-full h-40 object-cover rounded-lg border border-[#c6c6cd]" 
+                        />
                         <button
                           type="button"
                           onClick={() => {
-                            setEditSelectedFile(null)
-                            setEditImagePreview(null)
-                            setEditItem({...editItem, image: ''})
+                            if (editItem.category === 'Part') {
+                              setEditPartSelectedFile(null)
+                              setEditPartImagePreview(null)
+                              setEditItem({...editItem, image: ''})
+                            } else {
+                              setEditSelectedFile(null)
+                              setEditImagePreview(null)
+                              setEditItem({...editItem, image: ''})
+                            }
                           }}
                           className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
                         >
@@ -1358,7 +1726,7 @@ function Inventory() {
                           type="file"
                           className="hidden"
                           accept="image/*"
-                          onChange={handleEditImageUpload}
+                          onChange={editItem.category === 'Part' ? handleEditPartImageUpload : handleEditImageUpload}
                         />
                       </label>
                     )}
@@ -1382,7 +1750,7 @@ function Inventory() {
                     disabled={isEditing} 
                     className="px-4 py-2 text-xs font-semibold tracking-wide bg-black text-white rounded-lg shadow-sm hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Update Model
+                    Update {editItem.category === 'Part' ? 'Part' : 'Model'}
                   </button>
                 </div>
               </form>

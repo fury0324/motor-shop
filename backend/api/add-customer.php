@@ -7,6 +7,7 @@ date_default_timezone_set('Asia/Manila');
 header('Access-Control-Allow-Origin: http://localhost:5173');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -50,6 +51,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $coMakerRelationship = $_POST['coMakerRelationship'] ?? '';
     $coMakerAddress = $_POST['coMakerAddress'] ?? '';
     
+    // Get "Added By" info from POST
+    $addedByName = $_POST['added_by_name'] ?? 'Unknown';
+    $addedByRole = $_POST['added_by_role'] ?? 'user';
+    
     if (empty($fullName) || empty($contactNumber) || empty($email) || empty($homeAddress)) {
         $response['message'] = 'Missing required fields';
         echo json_encode($response);
@@ -81,17 +86,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
         
-        $sql = "INSERT INTO customers (full_name, contact_number, email, home_address, birth_date, civil_status, occupation, monthly_income,
+        $sql = "INSERT INTO customers (
+                full_name, contact_number, email, home_address, birth_date, 
+                civil_status, occupation, monthly_income,
                 valid_id_path, barangay_clearance_path, utility_receipt_path, proof_of_income_path,
                 co_maker_name, co_maker_contact, co_maker_relationship, co_maker_address, co_maker_id_path,
+                added_by_name, added_by_role,
                 created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())";
+                VALUES (
+                ?, ?, ?, ?, ?, 
+                ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?,
+                NOW(), NOW())";
         
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
-            $fullName, $contactNumber, $email, $homeAddress, $birthDate, $civilStatus, $occupation, $monthlyIncome,
+            $fullName, $contactNumber, $email, $homeAddress, $birthDate, 
+            $civilStatus, $occupation, $monthlyIncome,
             $validIdPath, $barangayClearancePath, $utilityReceiptPath, $proofOfIncomePath,
-            $coMakerName, $coMakerContact, $coMakerRelationship, $coMakerAddress, $coMakerIdPath
+            $coMakerName, $coMakerContact, $coMakerRelationship, $coMakerAddress, $coMakerIdPath,
+            $addedByName, $addedByRole
         ]);
         
         $customerId = $pdo->lastInsertId();
@@ -101,10 +117,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $response['success'] = true;
         $response['message'] = 'Customer registered successfully';
         $response['customer_id'] = $customerId;
+        $response['added_by_name'] = $addedByName;
+        $response['added_by_role'] = $addedByRole;
         
     } catch (PDOException $e) {
         $pdo->rollBack();
         $response['message'] = 'Database error: ' . $e->getMessage();
+        error_log('Error in add-customer.php: ' . $e->getMessage());
     }
 }
 

@@ -37,13 +37,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $type = $_POST['type'] ?? '';
     $price = $_POST['price'] ?? 0;
     $imageUrl = $_POST['image_url'] ?? '';
+    $quantity = $_POST['quantity'] ?? 0;
+    $isPart = isset($_POST['is_part']) ? 1 : 0;
     
-    if (empty($name) || empty($brand) || empty($category) || empty($type) || empty($price)) {
-        $response['message'] = 'Missing required fields';
-        echo json_encode($response);
-        exit();
+    // Check if it's a part (simplified validation)
+    $isPartItem = ($category === 'Part' || $isPart == 1);
+    
+    // Validate based on type
+    if ($isPartItem) {
+        // For parts: name, quantity, and price are required
+        if (empty($name) || empty($price) || $quantity <= 0) {
+            $response['message'] = 'Missing required fields for part. Name, quantity, and price are required.';
+            echo json_encode($response);
+            exit();
+        }
+        // Set default values for parts
+        $brand = '';
+        $type = 'Part';
+    } else {
+        // For models: all fields are required
+        if (empty($name) || empty($brand) || empty($category) || empty($type) || empty($price)) {
+            $response['message'] = 'Missing required fields for model.';
+            echo json_encode($response);
+            exit();
+        }
+        // Ensure category is set to Motorcycle for models
+        $category = 'Motorcycle';
+        $quantity = 0;
     }
     
+    // Handle image upload
     $imagePath = '';
     if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
         $uploadedPath = saveUploadedFile($_FILES['image']);
@@ -53,14 +76,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     try {
-        $sql = "INSERT INTO inventory (sku, name, brand, category, type, price, image, stock, status, statusColor) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'No Units', 'gray')";
+        // Prepare SQL - include quantity and is_part fields
+        $sql = "INSERT INTO inventory (sku, name, brand, category, type, price, image, quantity, is_part, stock, status, statusColor) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        
+        // Set default values
+        $stock = $isPartItem ? $quantity : 0;
+        $status = $isPartItem ? 'In Stock' : 'No Units';
+        $statusColor = $isPartItem ? 'green' : 'gray';
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$sku, $name, $brand, $category, $type, $price, $imagePath]);
+        $stmt->execute([
+            $sku, 
+            $name, 
+            $brand, 
+            $category, 
+            $type, 
+            $price, 
+            $imagePath, 
+            $quantity, 
+            $isPart, 
+            $stock, 
+            $status, 
+            $statusColor
+        ]);
         
         $response['success'] = true;
-        $response['message'] = 'Model added successfully';
+        $response['message'] = $isPartItem ? 'Part added successfully' : 'Model added successfully';
         $response['id'] = $pdo->lastInsertId();
         
     } catch (PDOException $e) {

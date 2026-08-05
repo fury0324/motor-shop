@@ -38,7 +38,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $category = $_POST['category'] ?? '';
     $type = $_POST['type'] ?? '';
     $price = $_POST['price'] ?? 0;
+    $description = $_POST['description'] ?? '';
+    $color = $_POST['color'] ?? '';
     $imageUrl = $_POST['image_url'] ?? '';
+    $quantity = $_POST['quantity'] ?? 0;
+    $is_part = isset($_POST['is_part']) ? $_POST['is_part'] : 0;
     
     if (empty($id)) {
         $response['message'] = 'Product ID is required';
@@ -46,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
     
+    // Handle image upload
     $imagePath = null;
     if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
         $uploadedPath = saveUploadedFile($_FILES['image']);
@@ -54,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $imagePath = $imageUrl;
     }
     
+    // If no new image, keep the existing one
     if (!$imagePath) {
         $stmt = $pdo->prepare("SELECT image FROM inventory WHERE id = ?");
         $stmt->execute([$id]);
@@ -62,18 +68,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     try {
-        $sql = "UPDATE inventory SET 
-                    name = ?, brand = ?, category = ?, type = ?, price = ?, image = ? 
-                WHERE id = ?";
+        // Check if it's a part by looking at the category or is_part flag
+        $isPartItem = ($category === 'Part' || $is_part == 1);
+        
+        // Build update query based on type
+        if ($isPartItem) {
+            // For Parts: update everything including quantity
+            $sql = "UPDATE inventory SET 
+                        name = ?, 
+                        brand = ?, 
+                        category = ?, 
+                        type = ?, 
+                        price = ?, 
+                        description = ?,
+                        color = ?,
+                        image = ?,
+                        quantity = ?,
+                        is_part = ?,
+                        stock = ?,
+                        status = ?,
+                        statusColor = ?
+                    WHERE id = ?";
+            
+            $params = [
+                $name, 
+                $brand, 
+                $category, 
+                $type, 
+                $price, 
+                $description,
+                $color,
+                $imagePath, 
+                $quantity,
+                1,
+                $quantity, // stock = quantity for parts
+                'In Stock',
+                'green',
+                $id
+            ];
+        } else {
+            // For Models: update without quantity (or set to 0)
+            $sql = "UPDATE inventory SET 
+                        name = ?, 
+                        brand = ?, 
+                        category = ?, 
+                        type = ?, 
+                        price = ?, 
+                        description = ?,
+                        color = ?,
+                        image = ?,
+                        is_part = ?,
+                        quantity = 0
+                    WHERE id = ?";
+            
+            $params = [
+                $name, 
+                $brand, 
+                $category, 
+                $type, 
+                $price, 
+                $description,
+                $color,
+                $imagePath,
+                0,
+                $id
+            ];
+        }
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$name, $brand, $category, $type, $price, $imagePath, $id]);
+        $result = $stmt->execute($params);
         
-        $response['success'] = true;
-        $response['message'] = 'Product updated successfully';
+        if ($result) {
+            $response['success'] = true;
+            $response['message'] = $isPartItem ? 'Part updated successfully' : 'Model updated successfully';
+            $response['is_part'] = $isPartItem;
+            if ($isPartItem) {
+                $response['quantity'] = $quantity;
+            }
+        } else {
+            $response['message'] = 'Failed to update product';
+        }
         
     } catch (PDOException $e) {
         $response['message'] = 'Database error: ' . $e->getMessage();
+        error_log('PDO Error: ' . $e->getMessage());
     }
 }
 

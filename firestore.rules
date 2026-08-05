@@ -1,0 +1,102 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return request.auth.token.role;
+    }
+
+    function hasAnyRole(roles) {
+      return isSignedIn() && role() in roles;
+    }
+
+    function isAdmin() {
+      return hasAnyRole(['admin']);
+    }
+
+    function isStaffOrAbove() {
+      return hasAnyRole(['admin', 'cashier', 'staff']);
+    }
+
+    // users/{uid} — profile + role source of truth. Role is only ever set via
+    // Cloud Functions (createStaffUser/updateStaffUser/deleteStaffUser), which use
+    // the Admin SDK and bypass these rules, so all client writes are denied.
+    match /users/{uid} {
+      allow read: if isStaffOrAbove();
+      allow write: if false;
+    }
+
+    // customers — email uniqueness + the RESTRICT relationship with transactions
+    // both need server-side atomicity, so all writes go through Cloud Functions
+    // (createCustomer/updateCustomer/deleteCustomer). Reads stay direct.
+    match /customers/{customerId} {
+      allow read: if isStaffOrAbove();
+      allow write: if false;
+    }
+
+    // customerEmails — internal uniqueness index for customers.email, written
+    // only by the customer Cloud Functions above.
+    match /customerEmails/{email} {
+      allow read, write: if false;
+    }
+
+    // inventory — plain field edits are direct writes; anything that must stay in
+    // sync with unit-level stock (add/delete a unit, delete the whole item) is
+    // forced through Cloud Functions instead.
+    match /inventory/{itemId} {
+      allow read: if isStaffOrAbove();
+      allow create, update: if isStaffOrAbove();
+      allow delete: if false; // deleteInventoryItem Cloud Function only (cascades units)
+
+      match /units/{unitId} {
+        allow read: if isStaffOrAbove();
+        allow write: if false; // addInventoryUnit / deleteInventoryUnit Cloud Functions only
+      }
+    }
+
+    // transactions — reads are direct; every write touches >1 document
+    // (counter, unit status, inventory stock) so it must go through a
+    // Cloud Function transaction (createTransaction/recordPayment/
+    // deleteTransaction/bulkDeleteTransactions).
+    match /transactions/{transactionId} {
+      allow read: if isStaffOrAbove();
+      allow write: if false;
+
+      match /installmentPayments/{paymentId} {
+        allow read: if isStaffOrAbove();
+        allow write: if false;
+      }
+    }
+
+    // partsTransactions — same reasoning as transactions (stock side effects).
+    match /partsTransactions/{transactionId} {
+      allow read: if isStaffOrAbove();
+      allow write: if false;
+    }
+
+    // counters — internal sequence generators for transaction numbers.
+    match /counters/{counterId} {
+      allow read, write: if false;
+    }
+
+    // unitEngineNumbers / unitChassisNumbers — internal global-uniqueness
+    // indexes for inventory unit serials, written only by addInventoryUnit/
+    // deleteInventoryUnit/deleteInventoryItem.
+    match /unitEngineNumbers/{engineNumber} {
+      allow read, write: if false;
+    }
+    match /unitChassisNumbers/{chassisNumber} {
+      allow read, write: if false;
+    }
+
+    // mail — written by Cloud Functions, consumed by the Trigger Email extension.
+    match /mail/{mailId} {
+      allow read, write: if false;
+    }
+  }
+}

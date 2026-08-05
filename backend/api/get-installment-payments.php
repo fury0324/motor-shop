@@ -25,7 +25,7 @@ if (!$transaction_id) {
 }
 
 try {
-    // Get transaction details with complete customer, product, and unit information
+    // Get transaction details with complete customer, product, unit, and processed_by information
     $stmt = $pdo->prepare("
         SELECT 
             t.*,
@@ -44,6 +44,9 @@ try {
             u.chassis_number,
             u.color,
             u.selling_price as unit_price,
+            t.processed_by_id,
+            t.processed_by_name,
+            t.processed_by_role,
             COALESCE(
                 (SELECT SUM(ip.amount_paid) FROM installment_payments ip WHERE ip.transaction_id = t.id AND ip.status = 'Paid'),
                 0
@@ -70,6 +73,12 @@ try {
     $remaining_balance = $total_selling_price - $down_payment - $total_paid;
     $transaction['remaining_balance'] = max(0, $remaining_balance);
     $transaction['total_paid_installments'] = $total_paid;
+    
+    // Ensure processed_by fields have default values
+    if (!isset($transaction['processed_by_name']) || empty($transaction['processed_by_name'])) {
+        $transaction['processed_by_name'] = 'Unknown';
+        $transaction['processed_by_role'] = 'Unknown';
+    }
     
     // Get all installment payments
     $stmt = $pdo->prepare("

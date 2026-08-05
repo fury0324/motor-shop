@@ -22,6 +22,7 @@ try {
     $stmt = $pdo->query("
         SELECT id, sku, name, brand, category, type, price, 
                stock, status, statusColor, image,
+               quantity, is_part,
                created_at, updated_at
         FROM inventory 
         ORDER BY name ASC

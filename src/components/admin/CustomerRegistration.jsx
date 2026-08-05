@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import Swal from 'sweetalert2'
+import Swal from '../../lib/swal'
+import { useCurrentUser } from '../../lib/useCurrentUser'
+import { newCustomerId, uploadCustomerFile, createCustomer } from '../../lib/customers'
 
 function CustomerRegistration() {
   const [currentStep, setCurrentStep] = useState(1)
@@ -30,6 +32,11 @@ function CustomerRegistration() {
     address: '',
     validId: { file: null, uploaded: false, name: '', url: '' }
   })
+
+  // Get current user info for "Added By"
+  const { user } = useCurrentUser()
+  const userName = user?.name || 'Admin'
+  const userRole = user?.role || 'admin'
 
   const steps = [
     { number: 1, title: 'Personal Information', description: 'Basic client details', icon: 'person' },
@@ -175,85 +182,85 @@ function CustomerRegistration() {
     })
 
     try {
-      const formData = new FormData()
-      
-      formData.append('fullName', personalInfo.fullName)
-      formData.append('contactNumber', personalInfo.contactNumber)
-      formData.append('email', personalInfo.email)
-      formData.append('homeAddress', personalInfo.homeAddress)
-      formData.append('birthDate', personalInfo.birthDate)
-      formData.append('civilStatus', personalInfo.civilStatus)
-      formData.append('occupation', personalInfo.occupation)
-      formData.append('monthlyIncome', personalInfo.monthlyIncome)
-      
-      formData.append('coMakerName', coMaker.fullName)
-      formData.append('coMakerContact', coMaker.contactNumber)
-      formData.append('coMakerRelationship', coMaker.relationship)
-      formData.append('coMakerAddress', coMaker.address)
-      
-      if (documents.validId.file) formData.append('validId', documents.validId.file)
-      if (documents.barangayClearance.file) formData.append('barangayClearance', documents.barangayClearance.file)
-      if (documents.utilityReceipt.file) formData.append('utilityReceipt', documents.utilityReceipt.file)
-      if (documents.proofOfIncome.file) formData.append('proofOfIncome', documents.proofOfIncome.file)
-      if (coMaker.validId.file) formData.append('coMakerId', coMaker.validId.file)
+      const customerId = newCustomerId()
 
-      const response = await fetch('http://localhost:8080/motor-shop/backend/api/add-customer.php', {
-        method: 'POST',
-        body: formData
+      Swal.update({ text: 'Uploading documents...' })
+      const [validIdUrl, barangayClearanceUrl, utilityReceiptUrl, proofOfIncomeUrl, coMakerIdUrl] =
+        await Promise.all([
+          uploadCustomerFile(customerId, 'validId', documents.validId.file),
+          uploadCustomerFile(customerId, 'barangayClearance', documents.barangayClearance.file),
+          uploadCustomerFile(customerId, 'utilityReceipt', documents.utilityReceipt.file),
+          uploadCustomerFile(customerId, 'proofOfIncome', documents.proofOfIncome.file),
+          uploadCustomerFile(customerId, 'coMakerId', coMaker.validId.file),
+        ])
+
+      Swal.update({ text: 'Saving customer record...' })
+      await createCustomer({
+        customerId,
+        fullName: personalInfo.fullName,
+        contactNumber: personalInfo.contactNumber,
+        email: personalInfo.email,
+        homeAddress: personalInfo.homeAddress,
+        birthDate: personalInfo.birthDate,
+        civilStatus: personalInfo.civilStatus,
+        occupation: personalInfo.occupation,
+        monthlyIncome: personalInfo.monthlyIncome,
+        documents: {
+          validIdUrl,
+          barangayClearanceUrl,
+          utilityReceiptUrl,
+          proofOfIncomeUrl,
+        },
+        coMaker: {
+          name: coMaker.fullName,
+          contact: coMaker.contactNumber,
+          relationship: coMaker.relationship,
+          address: coMaker.address,
+          idUrl: coMakerIdUrl,
+        },
+        addedByName: userName,
+        addedByRole: userRole,
       })
 
-      const data = await response.json()
+      Swal.fire({
+        icon: 'success',
+        title: 'Customer Registered!',
+        html: `${personalInfo.fullName} has been successfully registered.<br/><br/>
+               <small class="text-gray-500">Added by: ${userName} (${userRole})</small>`,
+        timer: 3000,
+        timerProgressBar: true
+      })
 
-      if (data.success) {
-        Swal.fire({
-          icon: 'success',
-          title: 'Customer Registered!',
-          text: `${personalInfo.fullName} has been successfully registered.`,
-          confirmButtonColor: '#3B82F6',
-          timer: 2000,
-          timerProgressBar: true
-        })
-        
-        setCurrentStep(1)
-        setPersonalInfo({
-          fullName: '',
-          contactNumber: '',
-          email: '',
-          homeAddress: '',
-          birthDate: '',
-          civilStatus: '',
-          occupation: '',
-          monthlyIncome: ''
-        })
-        setDocuments({
-          validId: { file: null, uploaded: false, name: '', url: '' },
-          barangayClearance: { file: null, uploaded: false, name: '', url: '' },
-          utilityReceipt: { file: null, uploaded: false, name: '', url: '' },
-          proofOfIncome: { file: null, uploaded: false, name: '', url: '' }
-        })
-        setCoMaker({
-          fullName: '',
-          contactNumber: '',
-          relationship: '',
-          address: '',
-          validId: { file: null, uploaded: false, name: '', url: '' }
-        })
-        
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: data.message || 'Failed to register customer.',
-          confirmButtonColor: '#3B82F6'
-        })
-      }
+      setCurrentStep(1)
+      setPersonalInfo({
+        fullName: '',
+        contactNumber: '',
+        email: '',
+        homeAddress: '',
+        birthDate: '',
+        civilStatus: '',
+        occupation: '',
+        monthlyIncome: ''
+      })
+      setDocuments({
+        validId: { file: null, uploaded: false, name: '', url: '' },
+        barangayClearance: { file: null, uploaded: false, name: '', url: '' },
+        utilityReceipt: { file: null, uploaded: false, name: '', url: '' },
+        proofOfIncome: { file: null, uploaded: false, name: '', url: '' }
+      })
+      setCoMaker({
+        fullName: '',
+        contactNumber: '',
+        relationship: '',
+        address: '',
+        validId: { file: null, uploaded: false, name: '', url: '' }
+      })
     } catch (error) {
       console.error('Error:', error)
       Swal.fire({
         icon: 'error',
-        title: 'Connection Error',
-        text: 'Unable to connect to server.',
-        confirmButtonColor: '#3B82F6'
+        title: 'Registration Failed',
+        text: error.message || 'Failed to register customer.'
       })
     } finally {
       setIsSubmitting(false)
@@ -749,6 +756,18 @@ function CustomerRegistration() {
                   className="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-full transition-all duration-500"
                   style={{ width: `${progressPercentage}%` }}
                 />
+              </div>
+            </div>
+
+            {/* Added By Info for Admin */}
+            <div className="mt-4 pt-3 border-t border-white/20">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-xs text-white/50">badge</span>
+                <div>
+                  <p className="text-[10px] text-white/50 uppercase">Will be added by</p>
+                  <p className="text-xs font-semibold">{userName}</p>
+                  <p className="text-[10px] text-white/40">{userRole}</p>
+                </div>
               </div>
             </div>
           </div>
