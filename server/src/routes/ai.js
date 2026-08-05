@@ -13,12 +13,26 @@ const SYSTEM_PROMPT =
   'help interpret data they paste in or explain general concepts instead. ' +
   'Keep replies concise and practical.'
 
+// Chat is otherwise stateless per-request (no server-side session), so the
+// client resends prior turns as `history` on every call — this trims it to a
+// sane window/size before it's forwarded, since it's client-controlled input.
+const MAX_HISTORY_MESSAGES = 20
+const MAX_MESSAGE_CHARS = 4000
+
+function sanitizeHistory(history) {
+  if (!Array.isArray(history)) return []
+  return history
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .slice(-MAX_HISTORY_MESSAGES)
+    .map((m) => ({ role: m.role, content: m.content.trim().slice(0, MAX_MESSAGE_CHARS) }))
+}
+
 // Replaces ai-chat.php's Ollama/gemma3 integration. Calls OpenRouter's
 // chat-completions API server-side (key never reaches the browser), mirroring
 // the same auth + error-handling pattern as every other route here.
 router.post('/aiChat', callable(async (request) => {
   assertStaffOrAbove(request.auth)
-  const { message } = request.data ?? {}
+  const { message, history } = request.data ?? {}
 
   if (!message || !String(message).trim()) {
     throw new HttpsError('invalid-argument', 'message is required.')
@@ -43,7 +57,8 @@ router.post('/aiChat', callable(async (request) => {
         model: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: String(message).trim() },
+          ...sanitizeHistory(history),
+          { role: 'user', content: String(message).trim().slice(0, MAX_MESSAGE_CHARS) },
         ],
       }),
     })

@@ -4,6 +4,7 @@ import Swal from '../../lib/swal'
 import logo from '../../assets/euro-logo.png'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { MENU_ITEMS, matchActive } from './navigation'
+import Badge from '../ui/Badge'
 
 function CashierSidebar({ onLogout }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -120,7 +121,7 @@ function CashierSidebar({ onLogout }) {
             className="h-9 w-auto object-contain"
             src={logo}
           />
-          <p className="text-xs text-white/50 font-medium">Cashier Portal</p>
+          <Badge>CASHIER</Badge>
         </div>
 
         {/* Navigation */}

@@ -3,73 +3,8 @@ import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import Swal from '../../lib/swal'
 import logo from '../../assets/euro-logo.png'
-
-const MENU_ITEMS = [
-  { id: 'dashboard', name: 'Dashboard', icon: 'dashboard', hasSubmenu: false, path: '/admin/dashboard' },
-  { id: 'users', name: 'User Management', icon: 'group', hasSubmenu: false, path: '/admin/users' },
-  {
-    id: 'customers',
-    name: 'Customers',
-    icon: 'people',
-    hasSubmenu: true,
-    path: '/admin/customers',
-    submenus: [
-      { id: 'customer-list', name: 'Customer List', icon: 'list_alt', path: '/admin/customers' },
-      { id: 'add-customer', name: 'Add Customer', icon: 'person_add', path: '/admin/customers/add' }
-    ]
-  },
-  {
-    id: 'inventory',
-    name: 'Inventory',
-    icon: 'inventory',
-    hasSubmenu: false,
-    path: '/admin/inventory'
-  },
-  {
-    id: 'transactions',
-    name: 'Transactions',
-    icon: 'receipt_long',
-    hasSubmenu: true,
-    path: '/admin/transactions',
-    submenus: [
-      { id: 'transaction-list', name: 'Transaction List', icon: 'list_alt', path: '/admin/transactions' },
-      { id: 'new-transaction', name: 'New Transaction', icon: 'add_shopping_cart', path: '/admin/transactions/new' }
-    ]
-  },
-  {
-    id: 'predictions',
-    name: 'Predictions',
-    icon: 'analytics',
-    hasSubmenu: false,
-    path: '/admin/predictions',
-    badge: 'NEW'
-  },
-  {
-    id: 'ai',
-    name: 'AI Helper',
-    icon: 'smart_toy',
-    hasSubmenu: false,
-    path: '/admin/ai'
-  },
-]
-
-// Flattens MENU_ITEMS into { menuId, subId, path } candidates and picks the
-// longest path that matches the current URL — this replaces what used to be
-// a hand-maintained if/else chain duplicating every route's path here, in
-// AdminLayout, and in every navigation callback.
-function matchActive(pathname) {
-  const candidates = []
-  for (const item of MENU_ITEMS) {
-    if (item.submenus) {
-      for (const sub of item.submenus) candidates.push({ menuId: item.id, subId: sub.id, path: sub.path })
-    } else {
-      candidates.push({ menuId: item.id, subId: null, path: item.path })
-    }
-  }
-  candidates.sort((a, b) => b.path.length - a.path.length)
-  const match = candidates.find((c) => pathname === c.path || pathname.startsWith(`${c.path}/`))
-  return match ? { activeMenu: match.menuId, activeSubMenu: match.subId } : { activeMenu: 'dashboard', activeSubMenu: null }
-}
+import Badge from '../ui/Badge'
+import { MENU_ITEMS, matchActive } from './navigation'
 
 function Sidebar({ onLogout }) {
   const location = useLocation()
@@ -181,12 +116,13 @@ function Sidebar({ onLogout }) {
         `}
       >
         {/* Logo */}
-        <div className="p-4 flex items-center gap-1 border-b border-white/10">
+        <div className="p-4 flex items-center gap-2 border-b border-white/10">
           <img
             alt="Euro Motor Logo"
             className="h-9 w-auto object-contain"
             src={logo}
           />
+          <Badge>ADMIN</Badge>
         </div>
 
         {/* Navigation */}

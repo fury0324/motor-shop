@@ -1,20 +1,19 @@
 // src/components/staff/StaffSidebar.jsx
 import { useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import Swal from '../../lib/swal'
 import logo from '../../assets/euro-logo.png'
+import Badge from '../ui/Badge'
+import { MENU_ITEMS, matchActive } from './navigation'
 
-function StaffSidebar({ activeMenu, onMenuChange, onLogout }) {
+function StaffSidebar({ onLogout }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-
-  const menuItems = [
-    { id: 'dashboard', name: 'Home', icon: 'home' },
-    { id: 'add-new', name: 'Add New', icon: 'add_circle' },
-    { id: 'inventory', name: 'Inventory', icon: 'inventory_2' },
-    { id: 'settings', name: 'Settings', icon: 'settings' }
-  ]
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { activeMenu } = matchActive(location.pathname)
 
   const handleMenuClick = (item) => {
-    onMenuChange(item.id)
+    navigate(item.path)
     setIsMobileMenuOpen(false)
   }
 
@@ -85,40 +84,55 @@ function StaffSidebar({ activeMenu, onMenuChange, onLogout }) {
             className="h-9 w-auto object-contain"
             src={logo}
           />
-          <span className="text-[10px] font-bold bg-brand-red text-white px-2 py-0.5 rounded-full">
-            STAFF
-          </span>
+          <Badge>STAFF</Badge>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-6 space-y-1">
-          {menuItems.map((item) => (
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+          {MENU_ITEMS.map((item) => (
             <a
               key={item.id}
               onClick={() => handleMenuClick(item)}
-              className={`
-                flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 cursor-pointer
-                ${isMenuActive(item.id)
-                  ? 'bg-brand-red text-white font-medium shadow-sm'
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 cursor-pointer ${
+                isMenuActive(item.id)
+                  ? 'bg-brand-red text-white font-medium'
                   : 'text-white/60 hover:text-white hover:bg-white/5'
-                }
-              `}
+              }`}
             >
-              <span className="material-symbols-outlined text-2xl">{item.icon}</span>
+              <span className="material-symbols-outlined text-xl">{item.icon}</span>
               <span className="text-sm font-medium">{item.name}</span>
             </a>
           ))}
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-white/10 p-4 space-y-2">
-          <a
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2 text-sm text-white/60 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-xl">logout</span>
-            <span>Sign Out</span>
-          </a>
+        <div className="border-t border-white/10 mt-auto">
+          <div className="p-4 space-y-2">
+            <a
+              href="#"
+              className="flex items-center gap-3 px-3 py-2 text-sm text-white/60 hover:text-white hover:bg-white/5 rounded-lg transition-colors duration-200"
+              onClick={(e) => {
+                e.preventDefault()
+                Swal.fire({
+                  title: 'Support',
+                  text: 'For assistance, please contact your supervisor or IT Support.',
+                  icon: 'info',
+                  confirmButtonColor: '#dc2626'
+                })
+              }}
+            >
+              <span className="material-symbols-outlined text-xl">help</span>
+              <span>Support</span>
+            </a>
+
+            <a
+              onClick={handleLogout}
+              className="flex items-center gap-3 px-3 py-2 text-sm text-white/60 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors duration-200 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-xl">logout</span>
+              <span>Sign Out</span>
+            </a>
+          </div>
         </div>
       </aside>
     </>

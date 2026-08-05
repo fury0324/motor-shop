@@ -145,8 +145,22 @@ function PredictiveDashboard() {
   const productPredictions = data?.top_products_prediction || [];
 
   return (
-    <div className="p-4 sm:p-6 max-w-[1440px] mx-auto">
-      
+    <div className="p-4 sm:p-5 max-w-[1440px] mx-auto">
+      {/* Header Section */}
+      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-[#0b1c30]">Predictions</h2>
+          <p className="text-sm text-[#45464d] mt-1">Sales trends and inventory forecasts.</p>
+        </div>
+        <button
+          onClick={fetchPredictiveData}
+          className="px-4 py-2 bg-white border border-[#c6c6cd] rounded-lg text-xs font-semibold hover:bg-gray-50 transition-colors flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-sm">refresh</span>
+          Refresh
+        </button>
+      </div>
+
       {/* ============ 📊 NEXT MONTH PREDICTION CARD ============ */}
       {prediction && prediction.predicted_revenue > 0 && (
         <div className="mb-6 bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl p-6 text-white shadow-lg">

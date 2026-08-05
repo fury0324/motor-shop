@@ -279,7 +279,7 @@ function UserManagement() {
   }
 
   return (
-    <div className="p-5">
+    <div className="p-4 sm:p-5">
       <div className="flex justify-between items-start mb-6">
         <div>
           <h2 className="text-2xl font-bold text-[#0b1c30]">User Management</h2>

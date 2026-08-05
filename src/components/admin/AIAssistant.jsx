@@ -29,21 +29,24 @@ function AIAssistant() {
 
   const sendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return
-    
+
     const userMessage = inputMessage.trim()
-    
+    // Chat is stateless server-side, so prior turns are resent as history on
+    // every call — captured from state before the new message is appended.
+    const history = messages.map((m) => ({ role: m.type === 'user' ? 'user' : 'assistant', content: m.content }))
+
     setMessages(prev => [...prev, {
       id: Date.now(),
       type: 'user',
       content: userMessage,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }])
-    
+
     setInputMessage('')
     setIsLoading(true)
-    
+
     try {
-      const result = await aiChatFn({ message: userMessage })
+      const result = await aiChatFn({ message: userMessage, history })
 
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
