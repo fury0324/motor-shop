@@ -97,7 +97,10 @@ export const updateStaffUser = onCall(async (request) => {
   if (role) docUpdate.role = role;
   if (status) docUpdate.status = status;
   if (Object.keys(docUpdate).length > 0) {
-    await db.collection("users").doc(uid).update(docUpdate);
+    // set(..., {merge: true}) instead of update() — an Auth user created
+    // outside our own createStaffUser flow has no users/{uid} Firestore doc
+    // yet, and update() throws NOT_FOUND on a missing document.
+    await db.collection("users").doc(uid).set(docUpdate, { merge: true });
   }
 
   return { success: true };
