@@ -18,6 +18,9 @@ const SYSTEM_PROMPT =
 // sane window/size before it's forwarded, since it's client-controlled input.
 const MAX_HISTORY_MESSAGES = 20
 const MAX_MESSAGE_CHARS = 4000
+// The live message gets a higher cap than history entries — it's the only
+// place an uploaded spreadsheet's CSV text (see AIAssistant.jsx) can land.
+const MAX_CURRENT_MESSAGE_CHARS = 16000
 
 function sanitizeHistory(history) {
   if (!Array.isArray(history)) return []
@@ -58,7 +61,7 @@ router.post('/aiChat', callable(async (request) => {
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           ...sanitizeHistory(history),
-          { role: 'user', content: String(message).trim().slice(0, MAX_MESSAGE_CHARS) },
+          { role: 'user', content: String(message).trim().slice(0, MAX_CURRENT_MESSAGE_CHARS) },
         ],
       }),
     })

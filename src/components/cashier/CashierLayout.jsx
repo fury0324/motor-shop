@@ -20,17 +20,20 @@ function CashierLayout({ onLogout, userRole }) {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#f8f9ff]">
       {/* Sidebar */}
       <CashierSidebar onLogout={handleLogout} />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden lg:ml-64">
+      {/* Main Content Area — same min-h-screen/no-inner-scroll-container
+          shell as AdminLayout/StaffLayout (sidebar is fixed, header is
+          sticky, so the visual result is identical either way; this keeps
+          all three portals on one scroll strategy). */}
+      <div className="lg:ml-64 min-h-screen">
         {/* Header */}
         <PortalHeader role="cashier" showDateTime />
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-6">
+        {/* Page Content — no padding here; each page owns its own */}
+        <main className="min-h-[calc(100vh-64px)]">
           <Routes>
             <Route path="/" element={<CashierDashboard />} />
             <Route path="/dashboard" element={<CashierDashboard />} />

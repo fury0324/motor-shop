@@ -153,8 +153,7 @@ function CashierDashboard() {
   ]
 
   return (
-    <div className="p-4 sm:p-6 max-w-[1440px] mx-auto">
-      
+    <div className="p-4 sm:p-5">
       {/* Header with Greeting */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
         <div>
