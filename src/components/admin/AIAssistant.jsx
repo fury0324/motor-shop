@@ -71,11 +71,6 @@ function AIAssistant() {
     }
   }
 
-  const handleSuggestion = (text) => {
-    setInputMessage(text)
-    inputRef.current?.focus()
-  }
-
   return (
     <div className="flex flex-col h-screen bg-white">
       {/* Header */}
@@ -120,23 +115,6 @@ function AIAssistant() {
                       : 'bg-white border border-gray-200 text-gray-800 shadow-sm'
                   }`}>
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                    
-                    {message.projectedUnits && (
-                      <div className="mt-3 grid grid-cols-2 gap-3">
-                        <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Projected Units</p>
-                          <p className="text-lg font-bold text-gray-800">{message.projectedUnits} Units</p>
-                          <p className="text-xs text-green-600">+{message.trendUp}%</p>
-                        </div>
-                        <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
-                          <p className="text-[10px] text-gray-500 uppercase tracking-wide">Confidence</p>
-                          <p className="text-lg font-bold text-gray-800">{message.confidenceScore}%</p>
-                          <div className="w-full bg-gray-200 h-1 rounded-full mt-1">
-                            <div className="bg-blue-600 h-full rounded-full" style={{ width: `${message.confidenceScore}%` }}></div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                   <p className="text-xs text-gray-400 mt-1 px-2">{message.timestamp}</p>
                 </div>
@@ -170,46 +148,8 @@ function AIAssistant() {
         </div>
       </div>
 
-      {/* Suggestions */}
-      <div className="border-t border-gray-200 bg-white">
-        <div className="max-w-3xl mx-auto px-4 py-3">
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            <button
-              onClick={() => handleSuggestion("What's the forecast for next month?")}
-              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-full text-xs text-gray-700 transition-colors whitespace-nowrap"
-            >
-              📊 Forecast
-            </button>
-            <button
-              onClick={() => handleSuggestion("Show me inventory stocks")}
-              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-full text-xs text-gray-700 transition-colors whitespace-nowrap"
-            >
-              📦 Inventory
-            </button>
-            <button
-              onClick={() => handleSuggestion("What are pending payments?")}
-              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-full text-xs text-gray-700 transition-colors whitespace-nowrap"
-            >
-              💰 Payments
-            </button>
-            <button
-              onClick={() => handleSuggestion("Who are top customers?")}
-              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-full text-xs text-gray-700 transition-colors whitespace-nowrap"
-            >
-              👥 Top Customers
-            </button>
-            <button
-              onClick={() => handleSuggestion("Export sales report to excel")}
-              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-full text-xs text-gray-700 transition-colors whitespace-nowrap"
-            >
-              📎 Export to Excel
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* Input Area */}
-      <div className="border-t border-gray-200 bg-white pb-4">
+      <div className="border-t border-gray-200 bg-white pb-4 pt-3">
         <div className="max-w-3xl mx-auto px-4">
           <div className="relative">
             <textarea
