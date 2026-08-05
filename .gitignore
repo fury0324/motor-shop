@@ -21,6 +21,7 @@ functions/node_modules
 functions/lib
 .env
 .env.local
+.env.vercel
 emulator-data/
 
 # Editor directories and files
