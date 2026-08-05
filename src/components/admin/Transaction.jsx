@@ -89,6 +89,10 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
 
   const isStep2Complete = () => {
     if (!selectedProduct) return false
+    // Motorcycle sales need a specific unit (engine/chassis) picked, not
+    // just the model — createTransaction requires unitId. Parts have no
+    // per-unit tracking, so the product alone is enough for those.
+    if (transactionType === 'model' && !selectedUnit) return false
     return true
   }
 

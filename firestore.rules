@@ -98,5 +98,24 @@ service cloud.firestore {
     match /mail/{mailId} {
       allow read, write: if false;
     }
+
+    // Collection-group read access — a rule nested under a specific parent
+    // path (e.g. the `units` block inside `inventory/{itemId}` above) only
+    // governs reads scoped to that exact parent; it does NOT cover a
+    // `collectionGroup()` query spanning every units/installmentPayments
+    // subcollection at once. Firestore requires a separate top-level rule
+    // using the `{path=**}` wildcard for that. Both queries are used
+    // client-side: watchInventoryWithUnits() (units, for stock counts) and
+    // watchDueTodayTransactionIds() (installmentPayments, for the due-today
+    // indicator). Writes are still denied — those still only ever happen via
+    // the API's Admin SDK, which bypasses rules entirely.
+    match /{path=**}/units/{unitId} {
+      allow read: if isStaffOrAbove();
+      allow write: if false;
+    }
+    match /{path=**}/installmentPayments/{paymentId} {
+      allow read: if isStaffOrAbove();
+      allow write: if false;
+    }
   }
 }
