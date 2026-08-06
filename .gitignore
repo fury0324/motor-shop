@@ -24,6 +24,12 @@ functions/lib
 .env.vercel
 emulator-data/
 
+# Legacy PHP backend's local upload storage (superseded by Cloudinary — see
+# server/src/routes/uploads.js). Contains customer-submitted documents
+# (valid IDs, barangay clearances, proof of income, utility bills) and must
+# never be tracked going forward.
+backend/uploads/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

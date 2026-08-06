@@ -21,10 +21,9 @@ function toDate(value) {
   return null
 }
 
-router.post('/getDashboardStats', callable(async (request) => {
-  assertStaffOrAbove(request.auth)
-  const db = getFirestore()
-
+// Extracted so the AI Assistant's get_dashboard_summary tool (server/src/aiTools.js)
+// can reuse the exact same aggregation logic instead of duplicating it.
+export async function getDashboardStats(db) {
   const [transactionsSnap, customersCountSnap, activeUsersCountSnap, inventorySnap, recentCustomersSnap] =
     await Promise.all([
       db.collection('transactions').orderBy('createdAt', 'desc').get(),
@@ -114,6 +113,11 @@ router.post('/getDashboardStats', callable(async (request) => {
     status_counts: Object.entries(statusCounts).map(([status, count]) => ({ status, count })),
     payment_type_counts: Object.entries(paymentTypeCounts).map(([payment_type, count]) => ({ payment_type, count })),
   }
+}
+
+router.post('/getDashboardStats', callable(async (request) => {
+  assertStaffOrAbove(request.auth)
+  return getDashboardStats(getFirestore())
 }))
 
 const MONTH_NAMES = [

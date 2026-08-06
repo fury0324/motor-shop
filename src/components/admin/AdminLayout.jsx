@@ -8,7 +8,7 @@ import CustomerList from './CustomerList'
 import CustomerRegistration from './CustomerRegistration'
 import TransactionList from './TransactionList'
 import Transaction from './Transaction'
-import AIAssistant from './AIAssistant'
+import AIAssistant from '../ai/AIAssistant'
 import PredictiveDashboard from './PredictiveDashboard'
 
 // Real nested routes replace the old activeMenu/activeSubMenu state machine

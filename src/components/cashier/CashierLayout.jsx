@@ -8,6 +8,7 @@ import TransactionHistory from './TransactionHistory'
 import CustomerList from './CustomerList'
 import RegisterCustomer from './RegisterCustomer'
 import CheckInventory from './CheckInventory'
+import AIAssistant from '../ai/AIAssistant'
 
 function CashierLayout({ onLogout, userRole }) {
   // Redirect if not cashier
@@ -42,6 +43,7 @@ function CashierLayout({ onLogout, userRole }) {
             <Route path="/customer-list" element={<CustomerList />} />
             <Route path="/register-customer" element={<RegisterCustomer />} />
             <Route path="/inventory" element={<CheckInventory />} />
+            <Route path="/ai" element={<AIAssistant />} />
           </Routes>
         </main>
       </div>

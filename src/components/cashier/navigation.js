@@ -28,6 +28,7 @@ export const MENU_ITEMS = [
     ]
   },
   { id: 'inventory', name: 'Check Inventory', icon: 'inventory_2', hasSubmenu: false, path: '/cashier/inventory' },
+  { id: 'ai', name: 'AI Helper', icon: 'smart_toy', hasSubmenu: false, path: '/cashier/ai' },
 ]
 
 // Picks the longest menu/submenu path that matches the current URL —

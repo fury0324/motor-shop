@@ -6,6 +6,7 @@ import StaffDashboard from './StaffDashboard'
 import StaffInventory from './StaffInventory'
 import StaffAddNew from './StaffAddNew'
 import StaffSettings from './StaffSettings'
+import AIAssistant from '../ai/AIAssistant'
 
 function StaffLayout({ onLogout }) {
   return (
@@ -20,6 +21,7 @@ function StaffLayout({ onLogout }) {
             <Route path="/inventory" element={<StaffInventory />} />
             <Route path="/add-new" element={<StaffAddNew />} />
             <Route path="/settings" element={<StaffSettings />} />
+            <Route path="/ai" element={<AIAssistant />} />
           </Routes>
         </main>
       </div>

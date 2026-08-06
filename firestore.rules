@@ -99,6 +99,26 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // aiChatSessions / aiUserMemory — AI Assistant chat history and extracted
+    // long-term memory. Unlike customers/inventory/transactions above, there is
+    // no client read carve-out here at all: every access (including by the
+    // owning user) goes through the Express API's listAiSessions/createAiSession/
+    // getAiSessionMessages/renameAiSession/deleteAiSession/aiChat endpoints,
+    // which check req.auth.uid against the session's/memory doc's owner before
+    // touching Firestore. That's what keeps each user's chat history and memory
+    // isolated — a rule here can't express "only the owner", since the owner is
+    // determined by a field inside the very document being read.
+    match /aiChatSessions/{sessionId} {
+      allow read, write: if false;
+
+      match /messages/{messageId} {
+        allow read, write: if false;
+      }
+    }
+    match /aiUserMemory/{uid} {
+      allow read, write: if false;
+    }
+
     // Collection-group read access — a rule nested under a specific parent
     // path (e.g. the `units` block inside `inventory/{itemId}` above) only
     // governs reads scoped to that exact parent; it does NOT cover a

@@ -242,6 +242,22 @@ made and implemented.
 
 ---
 
+### `aiChatSessions/{sessionId}` and `aiUserMemory/{uid}`
+*New — no MySQL equivalent. Added for the AI Assistant's persistent chat history and
+cross-session memory. Full detail (including the tool-access model) lives in
+`docs/ai-assistant.md`; this entry covers the data model only.*
+
+| Collection | Doc ID | Key fields |
+|---|---|---|
+| `aiChatSessions/{sessionId}` | auto-generated | `uid`, `title`, `messageCount`, `lastMessagePreview`, `createdAt`, `updatedAt` |
+| `aiChatSessions/{sessionId}/messages/{messageId}` | auto-generated | `role` (`user`\|`assistant`), `content`, `createdAt` |
+| `aiUserMemory/{uid}` | **is** the owner's Firebase Auth UID | `facts`, `updatedAt` |
+
+- **Writes:** server-only, via `server/src/routes/ai.js` (`createAiSession`, `aiChat`, `renameAiSession`, `deleteAiSession`) and `server/src/aiMemory.js`.
+- **Reads:** server-only — unlike every other collection above, there is **no** direct client read carve-out (`isStaffOrAbove()`) here. Every read goes through the API, which checks the requesting `uid` against the resource's `uid` field first. See `docs/ai-assistant.md` §3 for the full isolation argument.
+
+---
+
 ## Date handling convention
 
 MySQL `DATE` columns (`birth_date`, `transaction_date`, `due_date`, `purchase_date`, etc.)
@@ -261,6 +277,7 @@ This finalizes and slightly revises the `firestore.rules` drafted in Module 0:
 - `inventory/{id}/units`: unchanged — `if false` (Cloud Functions only).
 - `transactions`, `partsTransactions`, their subcollections, `counters`: unchanged — `if false`.
 - New: `unitEngineNumbers`, `unitChassisNumbers`, `customerEmails` — `allow read, write: if false`.
+- New: `aiChatSessions` (+ `messages` subcollection), `aiUserMemory` — `allow read, write: if false`, with **no** `isStaffOrAbove()` read carve-out (unlike the collections above) — see the AI Assistant section earlier in this doc and `docs/ai-assistant.md`.
 
 I'll apply this rules update at the start of Module 2, alongside the actual `createCustomer`/`updateCustomer`/`deleteCustomer` functions.
 
@@ -287,4 +304,8 @@ replacing the old flip-on-read `Pending`→`Overdue` logic in `get-installment-p
 
 **Module 7 — Notifications:** `sendDuePaymentReminders` (scheduled)
 
-**Module 8 — AI:** `aiChat` (stub)
+**Module 8 — AI:** `listAiSessions`, `createAiSession`, `getAiSessionMessages`,
+`renameAiSession`, `deleteAiSession`, `aiChat` (persisted history, live-database tool
+access, cross-session memory — see `docs/ai-assistant.md`). Note: these now live in the
+Express API (`server/src/routes/ai.js`), not Cloud Functions — `functions/src/ai.ts` is a
+pre-migration stub left in place but superseded, same as the rest of `functions/`.
