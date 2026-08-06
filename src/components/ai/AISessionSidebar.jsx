@@ -41,8 +41,8 @@ function AISessionSidebar({ sessions, activeSessionId, isLoading, onSelectSessio
       text: `"${session.title}" and its full history will be permanently removed.`,
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#d33',
-      cancelButtonColor: '#3085d6',
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#0b1c30',
       confirmButtonText: 'Yes, delete',
       cancelButtonText: 'Cancel',
     })
@@ -52,26 +52,26 @@ function AISessionSidebar({ sessions, activeSessionId, isLoading, onSelectSessio
   }
 
   return (
-    <div className="w-64 shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col h-full">
-      <div className="p-3 border-b border-gray-200">
+    <div className="w-72 shrink-0 border-r border-gray-100 bg-white flex flex-col h-full">
+      <div className="px-4 pt-5 pb-3">
         <button
           onClick={onNewChat}
-          className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 text-white text-sm font-medium py-2 hover:bg-blue-700 transition-colors"
+          className="w-full flex items-center justify-center gap-2 rounded-full bg-brand-red text-white text-sm font-medium py-2.5 hover:bg-brand-red-dark transition-colors shadow-sm"
         >
           <span className="material-symbols-outlined text-lg">add</span>
           New chat
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-2 pb-3">
         {isLoading ? (
           <div className="p-4 text-center text-xs text-gray-400">Loading chats…</div>
         ) : sessions.length === 0 ? (
-          <div className="p-4 text-center text-xs text-gray-400">No chats yet — start one above.</div>
+          <div className="px-3 py-6 text-center text-xs text-gray-400">No chats yet — start one above.</div>
         ) : (
-          <ul className="py-1">
+          <ul className="space-y-0.5">
             {sessions.map((session) => (
-              <li key={session.id} className="group px-2">
+              <li key={session.id} className="group">
                 {editingId === session.id ? (
                   <input
                     autoFocus
@@ -82,13 +82,15 @@ function AISessionSidebar({ sessions, activeSessionId, isLoading, onSelectSessio
                       if (e.key === 'Enter') commitRename()
                       if (e.key === 'Escape') setEditingId(null)
                     }}
-                    className="w-full text-sm px-2 py-2 rounded-lg border border-blue-400 focus:outline-none"
+                    className="w-full text-sm px-3 py-2.5 rounded-xl border border-brand-navy/30 focus:outline-none"
                   />
                 ) : (
                   <button
                     onClick={() => onSelectSession(session.id)}
-                    className={`w-full text-left px-2 py-2 rounded-lg flex flex-col gap-0.5 transition-colors ${
-                      session.id === activeSessionId ? 'bg-blue-100' : 'hover:bg-gray-100'
+                    className={`w-full text-left px-3 py-2.5 rounded-xl flex flex-col gap-0.5 transition-colors border-l-2 ${
+                      session.id === activeSessionId
+                        ? 'bg-red-50 border-brand-red'
+                        : 'border-transparent hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1">
@@ -101,7 +103,7 @@ function AISessionSidebar({ sessions, activeSessionId, isLoading, onSelectSessio
                             e.stopPropagation()
                             startRename(session)
                           }}
-                          className="material-symbols-outlined text-sm text-gray-400 hover:text-blue-600 p-0.5"
+                          className="material-symbols-outlined text-sm text-gray-400 hover:text-brand-navy p-0.5"
                         >
                           edit
                         </span>
@@ -112,7 +114,7 @@ function AISessionSidebar({ sessions, activeSessionId, isLoading, onSelectSessio
                             e.stopPropagation()
                             handleDelete(session)
                           }}
-                          className="material-symbols-outlined text-sm text-gray-400 hover:text-red-600 p-0.5"
+                          className="material-symbols-outlined text-sm text-gray-400 hover:text-brand-red p-0.5"
                         >
                           delete
                         </span>
@@ -121,7 +123,7 @@ function AISessionSidebar({ sessions, activeSessionId, isLoading, onSelectSessio
                     {session.lastMessagePreview && (
                       <span className="text-xs text-gray-400 truncate">{session.lastMessagePreview}</span>
                     )}
-                    <span className="text-[10px] text-gray-400">{formatRelativeTime(session.updatedAt)}</span>
+                    <span className="text-[10px] text-gray-300">{formatRelativeTime(session.updatedAt)}</span>
                   </button>
                 )}
               </li>

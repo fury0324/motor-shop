@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { read, utils } from 'xlsx'
 import { listAiSessions, createAiSession, getAiSessionMessages, renameAiSession, deleteAiSession, sendAiChat } from '../../lib/aiApi'
-import { useCurrentUser } from '../../lib/useCurrentUser'
 import AISessionSidebar from './AISessionSidebar'
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024 // 5MB
@@ -37,8 +36,6 @@ async function parseSpreadsheet(file) {
 }
 
 function AIAssistant() {
-  const { user } = useCurrentUser()
-
   const [sessions, setSessions] = useState([])
   const [isLoadingSessions, setIsLoadingSessions] = useState(true)
   const [activeSessionId, setActiveSessionId] = useState(null)
@@ -176,9 +173,10 @@ function AIAssistant() {
       await refreshSessions()
     } catch (error) {
       console.error('Error:', error)
+      const detail = error?.message ? ` (${error.message})` : ''
       setMessages((prev) => [
         ...prev,
-        { id: Date.now() + 1, type: 'assistant', content: 'Error connecting to the AI service. Please try again.', timestamp: formatTime() },
+        { id: Date.now() + 1, type: 'assistant', content: `Error connecting to the AI service${detail}. Please try again.`, timestamp: formatTime() },
       ])
     } finally {
       setIsLoading(false)
@@ -220,8 +218,10 @@ function AIAssistant() {
     }
   }
 
+  const activeTitle = sessions.find((s) => s.id === activeSessionId)?.title || 'New chat'
+
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-[#fafafa]">
       <AISessionSidebar
         sessions={sessions}
         activeSessionId={activeSessionId}
@@ -233,72 +233,35 @@ function AIAssistant() {
       />
 
       <div className="flex flex-col flex-1 min-w-0">
-        {/* Header */}
-        <div className="border-b border-gray-200 px-4 py-3 bg-white sticky top-0 z-10">
-          <div className="max-w-3xl mx-auto flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-              <span className="text-white text-sm font-bold">AI</span>
-            </div>
-            <div>
-              <h1 className="text-gray-800 font-semibold">Euro Motor AI Assistant</h1>
-              <p className="text-xs text-gray-500 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                {user?.role === 'admin' ? 'Ready to help — includes staff account lookups' : 'Ready to help'}
-              </p>
-            </div>
-          </div>
+        {/* Top bar */}
+        <div className="px-6 py-4 flex items-center gap-2.5 shrink-0">
+          <span className="material-symbols-outlined text-brand-red text-xl">auto_awesome</span>
+          <span className="text-sm font-medium text-gray-700 truncate">{activeTitle}</span>
         </div>
 
-        {/* Messages Container */}
-        <div className="flex-1 overflow-y-auto bg-gray-50">
-          <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-2xl mx-auto px-6 py-6 space-y-8">
             {isLoadingMessages ? (
-              <div className="text-center text-gray-400 py-12">Loading conversation…</div>
+              <div className="text-center text-sm text-gray-400 py-12">Loading conversation…</div>
             ) : (
               messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex gap-3 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  {message.type === 'assistant' && (
-                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-                      <span className="material-symbols-outlined text-white text-sm">smart_toy</span>
+                <div key={message.id} className={message.type === 'user' ? 'flex justify-end' : ''}>
+                  {message.type === 'user' ? (
+                    <div className="max-w-[75%] bg-brand-navy text-white rounded-2xl px-4 py-2.5">
+                      <p className="text-[15px] whitespace-pre-wrap">{message.content}</p>
                     </div>
-                  )}
-
-                  <div className={`flex-1 ${message.type === 'user' ? 'max-w-[70%]' : ''}`}>
-                    <div className={`rounded-2xl px-4 py-3 ${
-                      message.type === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white border border-gray-200 text-gray-800 shadow-sm'
-                    }`}>
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                    </div>
-                    {message.timestamp && <p className="text-xs text-gray-400 mt-1 px-2">{message.timestamp}</p>}
-                  </div>
-
-                  {message.type === 'user' && (
-                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                      <span className="material-symbols-outlined text-gray-600 text-sm">person</span>
-                    </div>
+                  ) : (
+                    <p className="text-[15px] leading-relaxed text-gray-800 whitespace-pre-wrap">{message.content}</p>
                   )}
                 </div>
               ))
             )}
 
-            {/* Loading indicator */}
             {isLoading && (
-              <div className="flex gap-3 justify-start">
-                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-                  <span className="material-symbols-outlined text-white text-sm">smart_toy</span>
-                </div>
-                <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                  </div>
-                </div>
+              <div className="flex items-center gap-2 text-sm text-gray-400">
+                <span className="material-symbols-outlined text-base animate-pulse-slow text-brand-red">auto_awesome</span>
+                Thinking…
               </div>
             )}
 
@@ -306,57 +269,54 @@ function AIAssistant() {
           </div>
         </div>
 
-        {/* Input Area */}
-        <div className="border-t border-gray-200 bg-white pb-4 pt-3">
-          <div className="max-w-3xl mx-auto px-4">
+        {/* Input */}
+        <div className="px-6 pb-6 pt-2 shrink-0">
+          <div className="max-w-2xl mx-auto">
             {attachedFile && (
-              <div className="flex items-center gap-2 mb-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 w-fit">
+              <div className="flex items-center gap-2 mb-2 px-3 py-1.5 bg-red-50 border border-red-100 rounded-lg text-xs text-gray-700 w-fit">
                 <span className="material-symbols-outlined text-sm">description</span>
                 <span className="font-medium">{attachedFile.name}</span>
-                {attachedFile.truncated && <span className="text-blue-400">(truncated)</span>}
-                <button onClick={() => setAttachedFile(null)} className="text-blue-400 hover:text-blue-700">
+                {attachedFile.truncated && <span className="text-gray-400">(truncated)</span>}
+                <button onClick={() => setAttachedFile(null)} className="text-gray-400 hover:text-gray-700">
                   <span className="material-symbols-outlined text-sm">close</span>
                 </button>
               </div>
             )}
             {fileError && <p className="text-xs text-red-500 mb-2">{fileError}</p>}
-            <div className="relative">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-                onChange={handleFileSelect}
-              />
+
+            <div className="bg-white border border-gray-200 rounded-3xl shadow-sm focus-within:border-brand-navy/40 focus-within:ring-1 focus-within:ring-brand-navy/20 transition-colors">
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileSelect} />
               <textarea
                 ref={inputRef}
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyDown={handleKeyPress}
-                placeholder="Ask me anything, or attach a spreadsheet..."
+                placeholder="Write a message..."
                 rows="1"
-                className="w-full bg-gray-50 border border-gray-200 text-gray-800 rounded-xl pl-11 pr-12 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                style={{ minHeight: '48px' }}
+                className="w-full bg-transparent text-gray-800 px-5 pt-4 pb-2 resize-none focus:outline-none text-[15px]"
+                style={{ minHeight: '28px', maxHeight: '160px' }}
               />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isParsingFile}
-                title="Attach spreadsheet (.xlsx, .xls, .csv)"
-                className="absolute left-2 bottom-2 p-2 text-gray-400 hover:text-blue-600 disabled:opacity-50 transition-colors"
-              >
-                <span className={`material-symbols-outlined text-lg ${isParsingFile ? 'animate-spin' : ''}`}>
-                  {isParsingFile ? 'progress_activity' : 'attach_file'}
-                </span>
-              </button>
-              <button
-                onClick={sendMessage}
-                disabled={isLoading || isParsingFile || (!inputMessage.trim() && !attachedFile)}
-                className="absolute right-2 bottom-2 p-2 text-gray-400 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <span className="material-symbols-outlined text-lg">send</span>
-              </button>
+              <div className="flex items-center justify-between px-3 pb-3 pt-1">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isParsingFile}
+                  title="Attach spreadsheet (.xlsx, .xls, .csv)"
+                  className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50 transition-colors"
+                >
+                  <span className={`material-symbols-outlined text-xl ${isParsingFile ? 'animate-spin' : ''}`}>
+                    {isParsingFile ? 'progress_activity' : 'add'}
+                  </span>
+                </button>
+                <button
+                  onClick={sendMessage}
+                  disabled={isLoading || isParsingFile || (!inputMessage.trim() && !attachedFile)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-brand-navy text-white disabled:bg-gray-200 disabled:text-gray-400 hover:bg-brand-navy-deep transition-colors"
+                >
+                  <span className="material-symbols-outlined text-lg">arrow_upward</span>
+                </button>
+              </div>
             </div>
-            <p className="text-xs text-gray-400 text-center mt-2">
+            <p className="text-xs text-gray-400 text-center mt-3">
               AI can make mistakes. Check important information.
             </p>
           </div>
@@ -364,12 +324,12 @@ function AIAssistant() {
       </div>
 
       <style>{`
-        @keyframes bounce {
-          0%, 60%, 100% { transform: translateY(0); }
-          30% { transform: translateY(-6px); }
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 0.35; }
+          50% { opacity: 1; }
         }
-        .animate-bounce {
-          animation: bounce 1s infinite;
+        .animate-pulse-slow {
+          animation: pulse-slow 1.4s ease-in-out infinite;
         }
         .material-symbols-outlined {
           font-size: 18px;
