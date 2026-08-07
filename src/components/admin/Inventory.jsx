@@ -9,6 +9,7 @@ import {
   addInventoryUnit,
   deleteInventoryItem,
 } from '../../lib/inventory'
+import { getSettings } from '../../lib/settings'
 
 function Inventory() {
   const [viewMode, setViewMode] = useState('grid')
@@ -48,6 +49,7 @@ function Inventory() {
   
   const itemsPerPage = 12
   const [typeOptions, setTypeOptions] = useState(['Sport', 'Scooter', 'Off-road', 'Street', 'Touring', 'Cruiser'])
+  const [defaultMarkupPercent, setDefaultMarkupPercent] = useState(0)
 
   // For Models (full form)
   const [newItem, setNewItem] = useState({
@@ -57,6 +59,7 @@ function Inventory() {
     type: '',
     brand: '',
     price: '',
+    installmentMarkupPercent: '',
     image: ''
   })
 
@@ -79,6 +82,7 @@ function Inventory() {
     type: '',
     brand: '',
     price: '',
+    installmentMarkupPercent: '',
     image: '',
     quantity: '', // For parts
     description: '',
@@ -115,6 +119,12 @@ function Inventory() {
       }
     )
     return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    getSettings()
+      .then((result) => setDefaultMarkupPercent(Number(result.installmentMarkupPercent) || 0))
+      .catch((error) => console.error('Failed to load settings:', error))
   }, [])
 
   const generateSKU = () => {
@@ -235,12 +245,13 @@ function Inventory() {
         category: newItem.category,
         type: newItem.type,
         price: newItem.price,
+        installmentMarkupPercent: newItem.installmentMarkupPercent,
         imageUrl,
       })
 
       setShowAddModal(false)
       setAddItemType(null)
-      setNewItem({ name: '', sku: '', category: 'Motorcycle', type: '', brand: '', price: '', image: '' })
+      setNewItem({ name: '', sku: '', category: 'Motorcycle', type: '', brand: '', price: '', installmentMarkupPercent: '', image: '' })
       setSelectedFile(null)
       setImagePreview(null)
 
@@ -384,6 +395,7 @@ function Inventory() {
       type: item.type,
       brand: item.brand || '',
       price: item.price,
+      installmentMarkupPercent: item.installmentMarkupPercent ?? '',
       image: item.imageUrl || '',
       quantity: item.quantity || '',
       description: item.description || '',
@@ -452,6 +464,7 @@ function Inventory() {
         category: editItem.category,
         type: editItem.type,
         price: editItem.price,
+        installmentMarkupPercent: editItem.installmentMarkupPercent,
         description: editItem.description,
         color: editItem.color,
         quantity: editItem.quantity,
@@ -459,7 +472,7 @@ function Inventory() {
       })
 
       setShowEditModal(false)
-      setEditItem({ id: '', name: '', sku: '', category: '', type: '', brand: '', price: '', image: '', quantity: '', description: '', color: '', notes: '' })
+      setEditItem({ id: '', name: '', sku: '', category: '', type: '', brand: '', price: '', installmentMarkupPercent: '', image: '', quantity: '', description: '', color: '', notes: '' })
       setEditImagePreview(null)
       setEditSelectedFile(null)
       setEditPartImagePreview(null)
@@ -1258,7 +1271,25 @@ function Inventory() {
                         />
                       </div>
                     </div>
-                    
+
+                    {newItem.category === 'Motorcycle' && (
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold tracking-wide text-[#45464d]">
+                          Installment Markup Override (%)
+                        </label>
+                        <input
+                          className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none transition-all focus:ring-2 focus:ring-black/10"
+                          placeholder={`Leave blank to use the shop default (${defaultMarkupPercent}%)`}
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          value={newItem.installmentMarkupPercent}
+                          onChange={(e) => setNewItem({...newItem, installmentMarkupPercent: e.target.value})}
+                        />
+                      </div>
+                    )}
+
                     <div className="flex flex-col gap-2">
                       <label className="text-xs font-semibold tracking-wide text-[#45464d]">Model Image</label>
                       <div className="flex flex-col items-center gap-3">
@@ -1618,6 +1649,22 @@ function Inventory() {
                           required
                         />
                       </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold tracking-wide text-[#45464d]">
+                        Installment Markup Override (%)
+                      </label>
+                      <input
+                        className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-base focus:border-black outline-none"
+                        placeholder={`Leave blank to use the shop default (${defaultMarkupPercent}%)`}
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={editItem.installmentMarkupPercent}
+                        onChange={(e) => setEditItem({...editItem, installmentMarkupPercent: e.target.value})}
+                      />
                     </div>
                   </>
                 )}

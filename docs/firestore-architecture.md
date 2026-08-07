@@ -103,11 +103,20 @@ the Cloud Function call) — only the Firestore document write itself is server-
 | `color` | `color` |
 | `isPart` | `is_part` *(boolean, was tinyint 0/1)* |
 | `quantity` | `quantity` |
+| `installmentMarkupPercent` | *(new — no MySQL equivalent)* Optional per-item override of the shop-wide installment markup default (`settings/general`). `null`/absent = use the default; always `null` for Parts. See "Installment pricing" note below. |
 | `createdAt` / `updatedAt` | `created_at` / `updated_at` |
 
 - **Writes:** `sku` had **no** `UNIQUE` key in the real schema (only `PRIMARY KEY(id)`), and
   create/update carry no cross-document atomicity requirement — these stay **direct client
   writes**, rules-gated, matching the original plan.
+- **Installment pricing:** `price` is the real cash price. When a `transactions` doc is
+  created with `paymentType: 'Installment'`, the client (`Transaction.jsx`/`NewTransaction.jsx`)
+  computes `sellingPrice` as `price * (1 + effectivePercent / 100)`, where `effectivePercent`
+  is this item's `installmentMarkupPercent` if set, else the global default from
+  `settings/general`. Motorcycles only — Parts always sell at `price` unchanged. This follows
+  the same client-computed, client-trusted pricing model `price` itself already uses (see
+  `docs/ai-assistant.md`-adjacent reasoning: nothing in this app's pricing pipeline is
+  server-validated today, so this doesn't introduce a new trust boundary).
 - **Delete:** Cloud Function `deleteInventoryItem` only (unchanged from original plan) —
   cascades the `units` subcollection, but first checks no `transactions` or
   `partsTransactions` reference this item (RESTRICT equivalent for both).
@@ -258,6 +267,20 @@ cross-session memory. Full detail (including the tool-access model) lives in
 
 ---
 
+### `settings/{docId}`
+*New — no MySQL equivalent. Shop-wide config, currently just the installment markup
+default. Single fixed doc, `settings/general`.*
+
+| Firestore field | Notes |
+|---|---|
+| `installmentMarkupPercent` | number, 0–100. Default installment markup applied to motorcycle sales; see `inventory/{itemId}.installmentMarkupPercent` for the per-item override. |
+| `updatedAt` | Timestamp |
+
+- **Writes:** server-only, via `server/src/routes/settings.js`'s `updateSettings` (`assertAdmin`).
+- **Reads:** `isStaffOrAbove()` — cashier/staff need the default to price installment transactions, but only admins can change it (enforced server-side, not just hidden in the UI).
+
+---
+
 ## Date handling convention
 
 MySQL `DATE` columns (`birth_date`, `transaction_date`, `due_date`, `purchase_date`, etc.)
@@ -278,6 +301,7 @@ This finalizes and slightly revises the `firestore.rules` drafted in Module 0:
 - `transactions`, `partsTransactions`, their subcollections, `counters`: unchanged — `if false`.
 - New: `unitEngineNumbers`, `unitChassisNumbers`, `customerEmails` — `allow read, write: if false`.
 - New: `aiChatSessions` (+ `messages` subcollection), `aiUserMemory` — `allow read, write: if false`, with **no** `isStaffOrAbove()` read carve-out (unlike the collections above) — see the AI Assistant section earlier in this doc and `docs/ai-assistant.md`.
+- New: `settings` — `allow read: if isStaffOrAbove(); allow write: if false;` (write only via `updateSettings`, `assertAdmin`).
 
 I'll apply this rules update at the start of Module 2, alongside the actual `createCustomer`/`updateCustomer`/`deleteCustomer` functions.
 
@@ -302,10 +326,17 @@ replacing the old flip-on-read `Pending`→`Overdue` logic in `get-installment-p
 **Module 6 — Dashboard/Analytics:** `getDashboardStats`, `getPredictiveAnalysis`
 (read-only, but still server-side for Firestore Aggregation Queries + cross-collection reads)
 
-**Module 7 — Notifications:** `sendDuePaymentReminders` (scheduled)
+**Module 7 — Notifications:** `sendDuePaymentReminders` (scheduled) and `sendPaymentConfirmationEmail`
+(fired from `recordPayment`). Both send directly through Brevo's API (`server/src/email.js`)
+rather than the `mail`/Trigger-Email-extension pattern — that collection is no longer written
+to by this app, kept only for backward compatibility with anything else that might reference it.
 
 **Module 8 — AI:** `listAiSessions`, `createAiSession`, `getAiSessionMessages`,
 `renameAiSession`, `deleteAiSession`, `aiChat` (persisted history, live-database tool
 access, cross-session memory — see `docs/ai-assistant.md`). Note: these now live in the
 Express API (`server/src/routes/ai.js`), not Cloud Functions — `functions/src/ai.ts` is a
 pre-migration stub left in place but superseded, same as the rest of `functions/`.
+
+**Module 9 — Admin Settings:** `getSettings` (`assertStaffOrAbove`), `updateSettings`
+(`assertAdmin`) — shop-wide config, currently the default installment markup percentage
+used by `Transaction.jsx`/`NewTransaction.jsx` when pricing motorcycle Installment sales.

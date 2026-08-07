@@ -14,6 +14,7 @@ import notificationsRouter from './routes/notifications.js'
 import aiRouter from './routes/ai.js'
 import uploadsRouter from './routes/uploads.js'
 import internalRouter from './routes/internal.js'
+import settingsRouter from './routes/settings.js'
 
 // Render doesn't run inside Google's infrastructure, so there's no ambient
 // service identity the way Cloud Functions has — the service account key
@@ -52,6 +53,7 @@ app.use('/api', dashboardRouter)
 app.use('/api', notificationsRouter)
 app.use('/api', aiRouter)
 app.use('/api', uploadsRouter)
+app.use('/api', settingsRouter)
 app.use('/internal', internalRouter)
 
 const port = process.env.PORT || 3000

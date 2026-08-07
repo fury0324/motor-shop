@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ROLE_LABELS } from './roleLabels'
 
 // Shared chrome for AdminLayout/CashierLayout/StaffLayout — previously each
@@ -10,6 +11,7 @@ import { ROLE_LABELS } from './roleLabels'
 // (with a page-specific icon/subtitle), so this stays a slim, fixed-height
 // bar to keep header height and content spacing identical across pages.
 function PortalHeader({ role = 'staff', showDateTime = false, showSettings = false }) {
+  const navigate = useNavigate()
   const [userName, setUserName] = useState('')
   const [now, setNow] = useState(new Date())
 
@@ -45,7 +47,10 @@ function PortalHeader({ role = 'staff', showDateTime = false, showSettings = fal
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#ba1a1a] rounded-full border-2 border-white"></span>
             </button>
             {showSettings && (
-              <button className="text-[#45464d] hover:text-black hover:bg-[#f1f4ff] transition-colors active:scale-95 hidden sm:flex p-2 rounded-full">
+              <button
+                onClick={() => navigate('/admin/settings')}
+                className="text-[#45464d] hover:text-black hover:bg-[#f1f4ff] transition-colors active:scale-95 hidden sm:flex p-2 rounded-full"
+              >
                 <span className="material-symbols-outlined">settings</span>
               </button>
             )}

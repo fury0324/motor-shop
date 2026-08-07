@@ -10,6 +10,7 @@ import TransactionList from './TransactionList'
 import Transaction from './Transaction'
 import AIAssistant from '../ai/AIAssistant'
 import PredictiveDashboard from './PredictiveDashboard'
+import AdminSettings from './AdminSettings'
 
 // Real nested routes replace the old activeMenu/activeSubMenu state machine
 // (which duplicated URL-matching logic here, in Sidebar, and in every
@@ -42,6 +43,7 @@ function AdminLayout({ onLogout }) {
             } />
             <Route path="/predictions" element={<PredictiveDashboard />} />
             <Route path="/ai" element={<AIAssistant />} />
+            <Route path="/settings" element={<AdminSettings />} />
           </Routes>
         </main>
       </div>

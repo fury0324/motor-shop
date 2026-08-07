@@ -4,6 +4,7 @@ import { watchCustomers } from '../../lib/customers'
 import { watchInventoryWithUnits } from '../../lib/inventory'
 import { createTransaction, createPartsTransaction } from '../../lib/transactions'
 import { useCurrentUser } from '../../lib/useCurrentUser'
+import { getSettings } from '../../lib/settings'
 
 function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
   const { user } = useCurrentUser()
@@ -28,6 +29,7 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [transactionType, setTransactionType] = useState(null) // 'model' or 'part'
   const [partQuantity, setPartQuantity] = useState(1)
+  const [defaultMarkupPercent, setDefaultMarkupPercent] = useState(0)
   
   // For Parts - simple customer name input
   const [customerName, setCustomerName] = useState('')
@@ -57,6 +59,22 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
       unsubInventory()
     }
   }, [])
+
+  useEffect(() => {
+    getSettings()
+      .then((result) => setDefaultMarkupPercent(Number(result.installmentMarkupPercent) || 0))
+      .catch((error) => console.error('Failed to load settings:', error))
+  }, [])
+
+  // Motorcycle Installment sales are marked up over the cash price (Settings
+  // > Default Installment Markup, or a per-item override set in Inventory).
+  // Parts and Cash sales are never marked up — this is a no-op for both.
+  const getEffectiveSellingPrice = (basePrice) => {
+    if (transactionType === 'part' || paymentType !== 'Installment') return basePrice
+    const override = selectedProduct?.installmentMarkupPercent
+    const percent = override != null && override !== '' ? Number(override) : defaultMarkupPercent
+    return Math.round(basePrice * (1 + percent / 100))
+  }
 
   const filteredCustomers = customers.filter(customer =>
     customer.fullName?.toLowerCase().includes(searchCustomerTerm.toLowerCase()) ||
@@ -104,9 +122,9 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
     }
     
     // For model
-    const price = parseFloat(selectedProduct?.price || 0)
+    const price = getEffectiveSellingPrice(parseFloat(selectedProduct?.price || 0))
     if (price <= 0) return false
-    
+
     if (paymentType === 'Cash') {
       const paid = parseFloat(amountPaid) || 0
       return amountPaid !== '' && paid > 0 && paid >= price
@@ -117,7 +135,7 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
   }
 
   const calculateMonthlyAmortization = () => {
-    const price = parseFloat(selectedProduct?.price || 0)
+    const price = getEffectiveSellingPrice(parseFloat(selectedProduct?.price || 0))
     const dp = parseFloat(downPayment) || 0
     const balance = price - dp
     const months = parseInt(terms)
@@ -126,7 +144,7 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
   }
 
   const calculateChange = () => {
-    const price = parseFloat(selectedProduct?.price || 0)
+    const price = getEffectiveSellingPrice(parseFloat(selectedProduct?.price || 0))
     const qty = transactionType === 'part' ? partQuantity : 1
     const total = price * qty
     const paid = parseFloat(amountPaid) || 0
@@ -229,7 +247,7 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
           confirmButtonColor: '#3B82F6'
         })
       } else {
-        const price = parseFloat(selectedProduct?.price || 0)
+        const price = getEffectiveSellingPrice(parseFloat(selectedProduct?.price || 0))
         if (paymentType === 'Cash') {
           Swal.fire({
             icon: 'error',
@@ -315,7 +333,7 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
           chassisNumber: selectedUnit.chassisNumber,
           color: selectedUnit.color,
           paymentType,
-          sellingPrice: parseFloat(selectedUnit.sellingPrice || selectedProduct.price || 0),
+          sellingPrice: getEffectiveSellingPrice(parseFloat(selectedUnit.sellingPrice || selectedProduct.price || 0)),
           amountPaid: parseFloat(amountPaid) || 0,
           downPayment: paymentType === 'Installment' ? parseFloat(downPayment) || 0 : 0,
           terms: paymentType === 'Installment' ? parseInt(terms) : null,
@@ -976,11 +994,11 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label className="text-xs font-semibold text-[#45464d] mb-1 block">Selling Price</label>
-                          <input 
+                          <input
                             className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm bg-[#f8f9ff]"
                             type="text"
                             readOnly
-                            value={`₱${parseFloat(selectedProduct?.price || 0).toLocaleString()}`}
+                            value={`₱${getEffectiveSellingPrice(parseFloat(selectedProduct?.price || 0)).toLocaleString()}`}
                           />
                         </div>
                         <div>
@@ -1114,7 +1132,7 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
                     <>
                       <div className="flex justify-between text-sm">
                         <span>Selling Price</span>
-                        <span>₱{parseFloat(selectedProduct.price || 0).toLocaleString()}</span>
+                        <span>₱{getEffectiveSellingPrice(parseFloat(selectedProduct.price || 0)).toLocaleString()}</span>
                       </div>
                       {paymentType === 'Cash' ? (
                         <>
@@ -1143,7 +1161,7 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
                           </div>
                           <div className="flex justify-between text-sm mt-1">
                             <span>Total Balance</span>
-                            <span>₱{(parseFloat(selectedProduct.price || 0) - (parseFloat(downPayment) || 0)).toLocaleString()}</span>
+                            <span>₱{(getEffectiveSellingPrice(parseFloat(selectedProduct.price || 0)) - (parseFloat(downPayment) || 0)).toLocaleString()}</span>
                           </div>
                         </>
                       )}

@@ -84,6 +84,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // settings — shared config (e.g. the default installment markup %).
+    // Every staff+ role needs to read it (they price transactions with it),
+    // but only updateSettings (assertAdmin) may write it.
+    match /settings/{docId} {
+      allow read: if isStaffOrAbove();
+      allow write: if false;
+    }
+
     // unitEngineNumbers / unitChassisNumbers — internal global-uniqueness
     // indexes for inventory unit serials, written only by addInventoryUnit/
     // deleteInventoryUnit/deleteInventoryItem.

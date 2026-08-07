@@ -81,6 +81,7 @@ export function watchInventoryUnits(inventoryId, onChange, onError) {
 // category='Motorcycle' and quantity=0 (their stock comes from units instead).
 export async function createInventoryItem({
   itemId, isPart, sku, name, brand, category, type, price, description, color, quantity, imageUrl,
+  installmentMarkupPercent,
 }) {
   if (isPart) {
     if (!name || !price || !(Number(quantity) > 0)) {
@@ -106,6 +107,11 @@ export async function createInventoryItem({
     stock: isPart ? qty : 0,
     status: isPart ? 'In Stock' : 'No Units',
     statusColor: isPart ? 'green' : 'gray',
+    // Parts never carry an installment markup override — cash/installment
+    // pricing only applies to motorcycles (see Transaction.jsx/NewTransaction.jsx).
+    installmentMarkupPercent: isPart || installmentMarkupPercent === '' || installmentMarkupPercent == null
+      ? null
+      : Number(installmentMarkupPercent),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -118,6 +124,7 @@ export async function createInventoryItem({
 // regardless of stock level, which is what the original PHP did.
 export async function updateInventoryItem({
   itemId, isPart, name, brand, category, type, price, description, color, quantity, imageUrl,
+  installmentMarkupPercent,
 }) {
   if (isPart) {
     if (!name || !price || !(Number(quantity) >= 0)) {
@@ -135,6 +142,9 @@ export async function updateInventoryItem({
     price: Number(price) || 0,
     description: description || '',
     color: color || null,
+    installmentMarkupPercent: isPart || installmentMarkupPercent === '' || installmentMarkupPercent == null
+      ? null
+      : Number(installmentMarkupPercent),
     updatedAt: serverTimestamp(),
   }
   if (imageUrl) update.imageUrl = imageUrl
