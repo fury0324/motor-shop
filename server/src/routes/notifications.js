@@ -1,6 +1,7 @@
 import { Router } from 'express'
-import { getFirestore, FieldValue } from 'firebase-admin/firestore'
+import { getFirestore } from 'firebase-admin/firestore'
 import { assertAdmin, callable } from '../shared.js'
+import { sendEmail } from '../email.js'
 
 const router = Router()
 
@@ -96,9 +97,63 @@ function staffAlertEmail(opts) {
   `
 }
 
-// Mirrors send-due-payment-notifications.php, minus the raw SMTP/PHPMailer
-// plumbing: this writes to mail/ and the Trigger Email extension does the
-// actual sending.
+function paymentConfirmationEmail(opts) {
+  return `
+    <html><head><style>
+      body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; }
+      .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+      .header { background: #0b1c30; color: white; padding: 20px; border-radius: 10px 10px 0 0; text-align: center; margin: -30px -30px 20px -30px; }
+      .amount { font-size: 32px; font-weight: bold; color: #16a34a; }
+      .details { background: #f8f9ff; padding: 15px; border-radius: 8px; margin: 15px 0; }
+      .details table { width: 100%; }
+      .details td { padding: 5px 0; }
+      .balance { background: #eef2ff; border: 1px solid #c7d2fe; padding: 12px; border-radius: 5px; margin: 10px 0; }
+      .footer { text-align: center; color: #666; font-size: 12px; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 20px; }
+    </style></head><body>
+      <div class="container">
+        <div class="header"><h1>🏍️ Euro Motor Shop</h1><p>✅ Payment Received</p></div>
+        <p>Dear <strong>${opts.customerName}</strong>,</p>
+        <p>We've received your payment. Thank you!</p>
+        <div class="details"><table>
+          <tr><td><strong>Transaction No:</strong></td><td>${opts.transactionNo}</td></tr>
+          <tr><td><strong>Item:</strong></td><td>${opts.itemName}</td></tr>
+          <tr><td><strong>Payment Date:</strong></td><td>${formatDate(opts.paymentDate)}</td></tr>
+          <tr><td><strong>Amount Paid:</strong></td><td class="amount">₱${formatCurrency(opts.amountPaid)}</td></tr>
+        </table></div>
+        ${opts.remainingBalance > 0
+          ? `<div class="balance">💰 <strong>Remaining balance:</strong> ₱${formatCurrency(opts.remainingBalance)}</div>`
+          : `<div class="balance">🎉 <strong>This transaction is now fully paid off!</strong></div>`}
+        <p>Thank you for your continued trust in Euro Motor Shop.</p>
+        <div class="footer">
+          <p>Euro Motor Shop • Your Trusted Motorcycle Dealer</p>
+          <p>📍 123 Main Street, Zamboanga City</p>
+          <p>📞 (062) 123-4567 • 📧 support@euromotor.com</p>
+        </div>
+      </div>
+    </body></html>
+  `
+}
+
+// Sends a receipt-style confirmation to the customer after recordPayment
+// (server/src/routes/transactions.js) commits. Looks up the email itself so
+// the caller only has to pass the payment/transaction details it already
+// has in hand — keeps all email composition/delivery in this one file.
+export async function sendPaymentConfirmationEmail({ customerId, customerName, transactionNo, itemName, amountPaid, remainingBalance, paymentDate }) {
+  if (!customerId) return { sent: false }
+  const db = getFirestore()
+  const customerDoc = await db.collection('customers').doc(customerId).get()
+  const email = customerDoc.data()?.email
+  if (!email) return { sent: false }
+
+  return sendEmail({
+    to: email,
+    subject: '✅ Payment Received - Euro Motor Shop',
+    html: paymentConfirmationEmail({ customerName, transactionNo, itemName, amountPaid, remainingBalance, paymentDate }),
+  })
+}
+
+// Mirrors send-due-payment-notifications.php's due-today digest, sent
+// directly through Brevo (see ../email.js) instead of PHPMailer/SMTP.
 export async function runDuePaymentReminders() {
   const db = getFirestore()
   const today = new Date().toISOString().split('T')[0]
@@ -136,7 +191,6 @@ export async function runDuePaymentReminders() {
   const customerDocs = customerRefs.length > 0 ? await db.getAll(...customerRefs) : []
   const customerEmailById = new Map(customerDocs.map((d) => [d.id, d.data()?.email]))
 
-  const mailCollection = db.collection('mail')
   let customersNotified = 0
   const customerFailed = []
 
@@ -146,21 +200,19 @@ export async function runDuePaymentReminders() {
       customerFailed.push(`${payment.customerName} (no email)`)
       continue
     }
-    await mailCollection.add({
-      to: [email],
-      message: {
-        subject: '🔔 Payment Reminder - Euro Motor Shop',
-        html: customerReminderEmail({
-          customerName: payment.customerName,
-          transactionNo: payment.transactionNo,
-          itemName: payment.itemName,
-          dueDate: payment.dueDate,
-          amountDue: payment.amountDue,
-        }),
-      },
-      createdAt: FieldValue.serverTimestamp(),
+    const { sent } = await sendEmail({
+      to: email,
+      subject: '🔔 Payment Reminder - Euro Motor Shop',
+      html: customerReminderEmail({
+        customerName: payment.customerName,
+        transactionNo: payment.transactionNo,
+        itemName: payment.itemName,
+        dueDate: payment.dueDate,
+        amountDue: payment.amountDue,
+      }),
     })
-    customersNotified += 1
+    if (sent) customersNotified += 1
+    else customerFailed.push(`${payment.customerName} (send failed)`)
   }
 
   const staffSnap = await db.collection('users').where('role', 'in', ['admin', 'cashier']).where('status', '==', 'active').get()
@@ -168,25 +220,22 @@ export async function runDuePaymentReminders() {
   for (const staffDoc of staffSnap.docs) {
     const staff = staffDoc.data()
     if (!staff.email) continue
-    await mailCollection.add({
-      to: [staff.email],
-      message: {
-        subject: `⚠️ Payment Alert - ${duePayments.length} due today`,
-        html: staffAlertEmail({
-          staffName: staff.name,
-          dueDate: today,
-          rows: duePayments.map((p) => ({
-            customerName: p.customerName,
-            transactionNo: p.transactionNo,
-            itemName: p.itemName,
-            amountDue: p.amountDue,
-            customerContact: p.customerContact,
-          })),
-        }),
-      },
-      createdAt: FieldValue.serverTimestamp(),
+    const { sent } = await sendEmail({
+      to: staff.email,
+      subject: `⚠️ Payment Alert - ${duePayments.length} due today`,
+      html: staffAlertEmail({
+        staffName: staff.name,
+        dueDate: today,
+        rows: duePayments.map((p) => ({
+          customerName: p.customerName,
+          transactionNo: p.transactionNo,
+          itemName: p.itemName,
+          amountDue: p.amountDue,
+          customerContact: p.customerContact,
+        })),
+      }),
     })
-    staffNotified += 1
+    if (sent) staffNotified += 1
   }
 
   return { dueCount: duePayments.length, customersNotified, customerFailed, staffNotified }

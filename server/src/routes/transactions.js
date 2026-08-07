@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { HttpsError, assertStaffOrAbove, pad, callable } from '../shared.js'
+import { sendPaymentConfirmationEmail } from './notifications.js'
 
 const router = Router()
 
@@ -178,6 +179,8 @@ router.post('/recordPayment', callable(async (request) => {
   const transactionRef = db.collection('transactions').doc(transactionId)
   const paymentRef = transactionRef.collection('installmentPayments').doc(paymentId)
 
+  let confirmationDetails = null
+
   await db.runTransaction(async (tx) => {
     const [transactionDoc, paymentDoc, pendingSnap] = await Promise.all([
       tx.get(transactionRef),
@@ -229,6 +232,23 @@ router.post('/recordPayment', callable(async (request) => {
       lastPaymentDate: paymentDate,
       nextDueDate,
     })
+
+    confirmationDetails = {
+      customerId: transactionData.customerId,
+      customerName: transactionData.customerName,
+      transactionNo: transactionData.transactionNo,
+      itemName: transactionData.inventoryName,
+      amountPaid: paid,
+      remainingBalance: newRemainingBalance,
+      paymentDate,
+    }
+  })
+
+  // Fire-and-forget: a slow/failed email should never hold up or fail the
+  // payment response — sendPaymentConfirmationEmail already never throws,
+  // but the .catch() here is defense in depth against that contract.
+  sendPaymentConfirmationEmail(confirmationDetails).catch((err) => {
+    console.error('Payment confirmation email failed:', err)
   })
 
   return { success: true }
