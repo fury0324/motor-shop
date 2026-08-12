@@ -48,7 +48,7 @@ function PortalHeader({ role = 'staff', showDateTime = false, showSettings = fal
             </button>
             {showSettings && (
               <button
-                onClick={() => navigate('/admin/settings')}
+                onClick={() => navigate(`/${role}/settings`)}
                 className="text-[#45464d] hover:text-black hover:bg-[#f1f4ff] transition-colors active:scale-95 hidden sm:flex p-2 rounded-full"
               >
                 <span className="material-symbols-outlined">settings</span>

@@ -31,7 +31,7 @@ function CashierLayout({ onLogout, userRole }) {
           all three portals on one scroll strategy). */}
       <div className="lg:ml-64 min-h-screen">
         {/* Header */}
-        <PortalHeader role="cashier" showDateTime />
+        <PortalHeader role="cashier" />
 
         {/* Page Content — no padding here; each page owns its own */}
         <main className="min-h-[calc(100vh-64px)]">

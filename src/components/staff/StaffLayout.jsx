@@ -13,7 +13,7 @@ function StaffLayout({ onLogout }) {
     <div className="min-h-screen bg-[#f8f9ff]">
       <StaffSidebar onLogout={onLogout} />
       <div className="lg:ml-64 min-h-screen">
-        <PortalHeader role="staff" />
+        <PortalHeader role="staff" showSettings />
         <main className="min-h-[calc(100vh-64px)]">
           <Routes>
             <Route path="/" element={<StaffDashboard />} />
