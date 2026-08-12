@@ -1,5 +1,6 @@
 // src/components/cashier/NewTransaction.jsx
 import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import Swal from '../../lib/swal'
 import { watchCustomers } from '../../lib/customers'
 import { watchInventoryWithUnits } from '../../lib/inventory'
@@ -7,8 +8,11 @@ import { createTransaction, createPartsTransaction } from '../../lib/transaction
 import { useCurrentUser } from '../../lib/useCurrentUser'
 import { getSettings } from '../../lib/settings'
 
-function NewTransaction({ initialType = null }) {
+function NewTransaction() {
   const { user } = useCurrentUser()
+  // Quick Actions on the dashboard navigate here with the chosen type
+  // already known, so this page can skip its own type-picker screen.
+  const initialType = useLocation().state?.type || null
   const [currentStep, setCurrentStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [customers, setCustomers] = useState([])
@@ -192,8 +196,6 @@ function NewTransaction({ initialType = null }) {
     setDownPayment('')
   }
 
-  // Quick Actions on the dashboard already say "Motorcycle" or "Parts" up
-  // front, so arriving from one shouldn't re-ask via the picker screen below.
   useEffect(() => {
     if (initialType) handleSelectTransactionType(initialType)
   }, [initialType])
