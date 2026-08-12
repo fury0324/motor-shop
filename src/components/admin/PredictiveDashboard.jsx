@@ -1,7 +1,7 @@
 // components/admin/PredictiveDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import {
-  AreaChart, Area, LineChart, Line, XAxis, YAxis,
+  AreaChart, Area, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { getPredictiveAnalysis } from '../../lib/dashboard';
@@ -54,26 +54,24 @@ function PredictiveDashboard() {
     return new Intl.NumberFormat().format(num);
   };
 
-  // 🟢 GREEN COLOR PALETTE for weekly bars
-  const getBarColor = (day, revenue, maxRevenue) => {
+  // Monotone blue scale for the weekly bars — matches the rest of the app's
+  // palette instead of a separate neon-green scheme just for this chart.
+  const getBarColor = (revenue, maxRevenue) => {
     if (revenue === 0) return '#e5e7eb';
-    
     const percentage = maxRevenue > 0 ? (revenue / maxRevenue) : 0;
-    
-    if (percentage < 0.25) return '#86efac';
-    if (percentage < 0.50) return '#4ade80';
-    if (percentage < 0.75) return '#22c55e';
-    if (percentage < 0.90) return '#16a34a';
-    return '#15803d';
+    if (percentage < 0.25) return '#bfdbfe';
+    if (percentage < 0.50) return '#60a5fa';
+    if (percentage < 0.75) return '#3b82f6';
+    if (percentage < 0.90) return '#2563eb';
+    return '#1d4ed8';
   };
 
-  // Get confidence color
-  const getConfidenceColor = (level) => {
-    switch(level) {
-      case 'High': return 'text-green-600 bg-green-100';
-      case 'Medium': return 'text-yellow-600 bg-yellow-100';
-      case 'Low': return 'text-red-600 bg-red-100';
-      default: return 'text-gray-600 bg-gray-100';
+  const getConfidenceBadge = (level) => {
+    switch (level) {
+      case 'High': return 'bg-green-100 text-green-700';
+      case 'Medium': return 'bg-yellow-100 text-yellow-700';
+      case 'Low': return 'bg-red-100 text-red-700';
+      default: return 'bg-gray-100 text-gray-700';
     }
   };
 
@@ -94,25 +92,25 @@ function PredictiveDashboard() {
           <span className="material-symbols-outlined text-5xl text-[#ba1a1a]">error</span>
           <h3 className="text-xl font-semibold mt-4 text-[#0b1c30]">Unable to Load Data</h3>
           <p className="text-sm text-[#45464d] mt-2">{error}</p>
-          
+
           {debugInfo && (
             <div className="mt-4 text-left bg-[#f8f9ff] border border-[#c6c6cd] rounded-lg p-4 overflow-auto max-h-60">
-              <p className="text-xs font-semibold text-[#45464d] mb-2">🔍 Debug Information:</p>
+              <p className="text-xs font-semibold text-[#45464d] mb-2">Debug Information</p>
               <pre className="text-xs text-[#76777d] whitespace-pre-wrap">
                 {JSON.stringify(debugInfo, null, 2)}
               </pre>
             </div>
           )}
-          
+
           <div className="mt-4 flex flex-wrap gap-3 justify-center">
             <button
               onClick={fetchPredictiveData}
               className="px-6 py-2 bg-black text-white rounded-lg text-sm font-semibold hover:opacity-90 transition"
             >
-              🔄 Retry
+              Retry
             </button>
           </div>
-          
+
           <p className="text-xs text-[#76777d] mt-4">
             Tip: Check the browser console (F12) for more details
           </p>
@@ -131,14 +129,9 @@ function PredictiveDashboard() {
 
   // Get top products
   const topProducts = data?.top_products?.slice(0, 3) || [];
-  
+
   // Get low stock alerts
   const lowStockItems = data?.low_stock_alerts || [];
-  
-  // Get critical items
-  const criticalItems = lowStockItems.filter(
-    item => item.months_until_empty < 1 && item.months_until_empty !== 999
-  ).slice(0, 3);
 
   // Get next month prediction
   const prediction = data?.next_month_prediction || null;
@@ -161,49 +154,68 @@ function PredictiveDashboard() {
         </button>
       </div>
 
-      {/* ============ 📊 NEXT MONTH PREDICTION CARD ============ */}
+      {/* ============ NEXT MONTH PREDICTION — KPI CARDS ============ */}
       {prediction && prediction.predicted_revenue > 0 && (
-        <div className="mb-6 bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl p-6 text-white shadow-lg">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="material-symbols-outlined text-4xl">trending_up</span>
-              <div>
-                <p className="text-sm opacity-80">📊 Predicted Revenue for</p>
-                <h3 className="text-2xl font-bold">{prediction.next_month}</h3>
+        <div className="mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-5 rounded-xl border border-[#c6c6cd] shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <span className="material-symbols-outlined text-xl text-blue-600">trending_up</span>
+                </div>
+                <p className="text-xs font-semibold tracking-wide text-[#45464d] uppercase">Predicted Revenue</p>
               </div>
+              <h3 className="text-2xl font-bold text-[#0b1c30]">{formatCurrency(prediction.predicted_revenue)}</h3>
+              <p className="text-xs text-[#76777d] mt-1">for {prediction.next_month}</p>
             </div>
-            
-            <div className="text-center">
-              <p className="text-sm opacity-80">Predicted Revenue</p>
-              <p className="text-4xl font-bold">{formatCurrency(prediction.predicted_revenue)}</p>
+
+            <div className="bg-white p-5 rounded-xl border border-[#c6c6cd] shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <span className="material-symbols-outlined text-xl text-purple-600">payments</span>
+                </div>
+                <p className="text-xs font-semibold tracking-wide text-[#45464d] uppercase">Monthly Average</p>
+              </div>
+              <h3 className="text-2xl font-bold text-[#0b1c30]">{formatCurrency(prediction.avg_monthly_revenue)}</h3>
+              <p className="text-xs text-[#76777d] mt-1">across recorded months</p>
             </div>
-            
-            <div className="flex flex-wrap gap-4">
-              <div className="text-center">
-                <p className="text-sm opacity-80">Monthly Average</p>
-                <p className="text-lg font-semibold">{formatCurrency(prediction.avg_monthly_revenue)}</p>
+
+            <div className="bg-white p-5 rounded-xl border border-[#c6c6cd] shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <div className={`p-2 rounded-lg ${prediction.trend_percentage >= 0 ? 'bg-green-100' : 'bg-red-100'}`}>
+                  <span className={`material-symbols-outlined text-xl ${prediction.trend_percentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {prediction.trend_percentage >= 0 ? 'trending_up' : 'trending_down'}
+                  </span>
+                </div>
+                <p className="text-xs font-semibold tracking-wide text-[#45464d] uppercase">Trend</p>
               </div>
-              <div className="text-center">
-                <p className="text-sm opacity-80">Trend</p>
-                <p className={`text-lg font-semibold ${prediction.trend_percentage >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                  {prediction.trend_percentage >= 0 ? '↑' : '↓'} {Math.abs(prediction.trend_percentage)}%
-                </p>
+              <h3 className={`text-2xl font-bold ${prediction.trend_percentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {prediction.trend_percentage >= 0 ? '+' : ''}{prediction.trend_percentage}%
+              </h3>
+              <p className="text-xs text-[#76777d] mt-1">vs. previous month</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-[#c6c6cd] shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 bg-gray-100 rounded-lg">
+                  <span className="material-symbols-outlined text-xl text-gray-600">verified</span>
+                </div>
+                <p className="text-xs font-semibold tracking-wide text-[#45464d] uppercase">Confidence</p>
               </div>
-              <div className="text-center">
-                <p className="text-sm opacity-80">Confidence</p>
-                <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${getConfidenceColor(prediction.confidence)}`}>
-                  {prediction.confidence} {prediction.confidence_score}%
-                </span>
-              </div>
+              <span className={`inline-block px-2.5 py-1 rounded-full text-sm font-bold ${getConfidenceBadge(prediction.confidence)}`}>
+                {prediction.confidence} · {prediction.confidence_score}%
+              </span>
             </div>
           </div>
-          <div className="mt-3 text-xs opacity-70 text-center md:text-left">
-            Based on {prediction.based_on_months} months of historical data • {prediction.message}
-          </div>
+
+          <p className="text-xs text-[#76777d] mt-3 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-sm">info</span>
+            Based on {prediction.based_on_months} months of historical data — {prediction.message}
+          </p>
         </div>
       )}
 
-      {/* ============ 🏍️ TOP PRODUCTS PREDICTION ============ */}
+      {/* ============ TOP PRODUCTS PREDICTION ============ */}
       {productPredictions.length > 0 && (
         <div className="mb-6 bg-white border border-[#c6c6cd] rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
@@ -253,7 +265,7 @@ function PredictiveDashboard() {
 
       {/* ============ MAIN GRID: Chart + Lists ============ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
+
         {/* Chart - 8 columns */}
         <div className="lg:col-span-8 bg-white border border-[#c6c6cd] rounded-xl shadow-sm overflow-hidden">
           <div className="p-5 border-b border-[#c6c6cd] flex flex-wrap justify-between items-center gap-3 bg-[#f8f9ff]">
@@ -263,7 +275,7 @@ function PredictiveDashboard() {
             </div>
             <div className="flex gap-3 text-xs">
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-black"></span> Revenue
+                <span className="w-3 h-3 rounded-full bg-blue-600"></span> Revenue
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-full bg-[#76777d]"></span> Transactions
@@ -276,24 +288,24 @@ function PredictiveDashboard() {
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#000000" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="#000000" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5eeff" vertical={false}/>
-                  <XAxis 
-                    dataKey="month" 
+                  <XAxis
+                    dataKey="month"
                     tick={{ fontSize: 11, fill: '#76777d' }}
                     axisLine={false}
                     tickLine={false}
                   />
-                  <YAxis 
+                  <YAxis
                     tick={{ fontSize: 11, fill: '#76777d' }}
                     axisLine={false}
                     tickLine={false}
                     tickFormatter={(value) => `₱${(value/1000).toFixed(0)}k`}
                   />
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value, name) => {
                       if (name === 'Revenue') return formatCurrency(value);
                       return formatNumber(value);
@@ -306,18 +318,18 @@ function PredictiveDashboard() {
                     }}
                   />
                   <Legend />
-                  <Area 
-                    type="monotone" 
-                    dataKey="revenue" 
-                    stroke="#000000" 
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#2563eb"
                     strokeWidth={2}
                     fill="url(#revenueGradient)"
                     name="Revenue"
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="transactions" 
-                    stroke="#76777d" 
+                  <Line
+                    type="monotone"
+                    dataKey="transactions"
+                    stroke="#76777d"
                     strokeWidth={2}
                     strokeDasharray="5 5"
                     name="Transactions"
@@ -334,7 +346,7 @@ function PredictiveDashboard() {
 
         {/* Right Column - 4 columns */}
         <div className="lg:col-span-4 space-y-6">
-          
+
           {/* Top Products (Historical) */}
           <div className="bg-white border border-[#c6c6cd] rounded-xl shadow-sm overflow-hidden">
             <div className="p-4 border-b border-[#c6c6cd] bg-[#f8f9ff]">
@@ -375,7 +387,8 @@ function PredictiveDashboard() {
             </div>
           </div>
 
-          {/* Low Stock Forecast */}
+          {/* Low Stock Forecast — critical items surfaced inline instead of
+              a separate dark banner section further down the page. */}
           <div className="bg-white border border-[#c6c6cd] rounded-xl shadow-sm overflow-hidden">
             <div className="p-4 border-b border-[#c6c6cd] bg-[#f8f9ff]">
               <h4 className="text-sm font-semibold text-[#0b1c30] flex items-center gap-2">
@@ -384,29 +397,36 @@ function PredictiveDashboard() {
               </h4>
             </div>
             <div className="divide-y divide-[#c6c6cd]">
-              {lowStockItems.slice(0, 3).map((item, index) => (
-                <div key={index} className="p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 bg-[#dce9ff] rounded-full border border-[#c6c6cd] flex items-center justify-center flex-shrink-0">
-                    <span className="material-symbols-outlined text-black text-lg">
-                      {item.alert_level === 'Critical' ? 'warning' : 'inventory_2'}
-                    </span>
-                  </div>
-                  <div className="flex-grow">
-                    <p className="text-sm font-bold text-[#0b1c30]">{item.name}</p>
-                    <div className="flex items-center justify-between">
-                      <span className={`text-xs font-medium ${
-                        item.alert_level === 'Critical' ? 'text-[#ba1a1a]' : 'text-[#595f66]'
-                      }`}>
-                        {item.alert_level === 'Critical' ? '⚠️ STOCK-OUT RISK' : `${item.months_until_empty} months left`}
+              {lowStockItems.slice(0, 3).map((item, index) => {
+                const isCritical = item.alert_level === 'Critical';
+                return (
+                  <div key={index} className={`p-4 flex items-center gap-3 ${isCritical ? 'bg-red-50' : ''}`}>
+                    <div className={`w-10 h-10 rounded-full border flex items-center justify-center flex-shrink-0 ${
+                      isCritical ? 'bg-red-100 border-red-200' : 'bg-[#dce9ff] border-[#c6c6cd]'
+                    }`}>
+                      <span className={`material-symbols-outlined text-lg ${isCritical ? 'text-red-600' : 'text-black'}`}>
+                        {isCritical ? 'warning' : 'inventory_2'}
                       </span>
-                      <span className="text-xs text-[#45464d]">Stock: {item.current_stock}</span>
+                    </div>
+                    <div className="flex-grow min-w-0">
+                      <p className="text-sm font-bold text-[#0b1c30] truncate">{item.name}</p>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span className={`text-xs font-medium ${isCritical ? 'text-red-600' : 'text-[#595f66]'}`}>
+                          {isCritical
+                            ? 'Stock-out risk'
+                            : item.months_until_empty === 999
+                              ? 'No recent sales'
+                              : `${Math.round(item.months_until_empty)} months left`}
+                        </span>
+                        <span className="text-xs text-[#45464d]">Stock: {item.current_stock}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {lowStockItems.length === 0 && (
                 <div className="p-4 text-center text-sm text-[#45464d]">
-                  ✅ All parts have adequate stock
+                  All parts have adequate stock
                 </div>
               )}
             </div>
@@ -414,66 +434,9 @@ function PredictiveDashboard() {
         </div>
       </div>
 
-      {/* Critical Stock-Out Risk Section */}
-      {criticalItems.length > 0 && (
-        <div className="mt-6 bg-[#0b1c30] text-white rounded-xl p-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-black/20 blur-[100px] -mr-32 -mt-32"></div>
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="material-symbols-outlined text-[#ba1a1a] text-4xl">warning</span>
-              <div>
-                <h2 className="text-xl font-bold">Critical Stock-Out Risk Analysis</h2>
-                <p className="text-sm text-white/70">
-                  The following high-demand components are predicted to deplete soon
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {criticalItems.map((item, index) => {
-                const riskPercentage = Math.min(
-                  Math.round((1 - (item.months_until_empty / 3)) * 100),
-                  95
-                );
-                return (
-                  <div key={index} className="bg-white/10 backdrop-blur-sm border border-white/20 p-4 rounded-lg">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-white/50">
-                        Item Group
-                      </span>
-                      <span className="material-symbols-outlined text-white/50">inventory_2</span>
-                    </div>
-                    <p className="text-base font-bold">{item.name}</p>
-                    <div className="h-1 bg-white/10 rounded-full w-full mt-3">
-                      <div 
-                        className="h-full bg-[#ba1a1a] rounded-full shadow-[0_0_10px_rgba(186,26,26,0.6)]"
-                        style={{ width: `${riskPercentage}%` }}
-                      ></div>
-                    </div>
-                    <div className="flex justify-between mt-2">
-                      <span className="text-xs font-bold text-[#ba1a1a]">Stock: {item.current_stock} units</span>
-                      <span className="text-xs text-white/70">
-                        {item.months_until_empty === 999 ? 'No sales data' : `${Math.round(item.months_until_empty)} months left`}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-4 flex flex-wrap justify-end gap-3">
-              <button className="px-4 py-2 border border-white/30 rounded-lg text-xs font-semibold hover:bg-white/10 transition">
-                Generate Vendor Orders
-              </button>
-              <button className="px-4 py-2 bg-[#ba1a1a] text-white rounded-lg text-xs font-bold shadow-lg hover:brightness-110 transition">
-                Authorize Emergency Restock
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Seasonal Pattern */}
       {data?.seasonal_patterns && data.seasonal_patterns.length > 0 && (
-        <div className="mt-6 bg-white border border-[#c6c6cd] rounded-xl p-5">
+        <div className="mt-6 bg-white border border-[#c6c6cd] rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-black text-3xl">calendar_month</span>
             <div>
@@ -493,9 +456,9 @@ function PredictiveDashboard() {
         </div>
       )}
 
-      {/* Weekly Pattern - GREEN COLOR SCHEME */}
+      {/* Weekly Pattern */}
       {data?.daily_patterns && data.daily_patterns.length > 0 && (
-        <div className="mt-6 bg-[#f8f9ff] border border-[#c6c6cd] rounded-xl p-5">
+        <div className="mt-6 bg-white border border-[#c6c6cd] rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-black text-3xl">today</span>
             <div>
@@ -503,20 +466,20 @@ function PredictiveDashboard() {
               <p className="text-sm text-[#45464d]">Best days for sales based on historical data</p>
             </div>
           </div>
-          
+
           {/* Color Legend */}
           <div className="flex flex-wrap gap-3 mt-3 text-[10px] text-[#45464d]">
             <span className="flex items-center gap-1">
-              <span className="w-3 h-3 rounded-full bg-[#86efac]"></span> Low
+              <span className="w-3 h-3 rounded-full bg-[#bfdbfe]"></span> Low
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-3 h-3 rounded-full bg-[#4ade80]"></span> Medium
+              <span className="w-3 h-3 rounded-full bg-[#60a5fa]"></span> Medium
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-3 h-3 rounded-full bg-[#22c55e]"></span> High
+              <span className="w-3 h-3 rounded-full bg-[#3b82f6]"></span> High
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-3 h-3 rounded-full bg-[#15803d]"></span> Peak
+              <span className="w-3 h-3 rounded-full bg-[#1d4ed8]"></span> Peak
             </span>
             <span className="flex items-center gap-1 ml-auto">
               <span className="w-3 h-3 rounded-full bg-[#e5e7eb]"></span> No Sales
@@ -528,22 +491,21 @@ function PredictiveDashboard() {
               const revenue = parseFloat(day.total_revenue) || 0;
               const maxRevenue = Math.max(...data.daily_patterns.map(d => parseFloat(d.total_revenue) || 0));
               const heightPercentage = maxRevenue > 0 ? (revenue / maxRevenue) * 100 : 0;
-              
-              const barColor = getBarColor(day.day_of_week, revenue, maxRevenue);
-              
+
+              const barColor = getBarColor(revenue, maxRevenue);
+
               return (
                 <div key={index} className="text-center">
-                  <div className="bg-white rounded-lg p-2 h-24 flex flex-col justify-end border border-[#c6c6cd] relative group">
+                  <div className="bg-[#f8f9ff] rounded-lg p-2 h-24 flex flex-col justify-end border border-[#c6c6cd] relative group">
                     <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-[#0b1c30] text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
                       {formatCurrency(revenue)}
                     </div>
-                    <div 
+                    <div
                       className="rounded-t-sm w-full transition-all duration-300"
-                      style={{ 
+                      style={{
                         height: `${Math.max(heightPercentage, revenue > 0 ? 8 : 4)}%`,
                         minHeight: revenue > 0 ? '8px' : '4px',
-                        backgroundColor: barColor,
-                        boxShadow: revenue > 0 ? '0 2px 8px rgba(34, 197, 94, 0.3)' : 'none'
+                        backgroundColor: barColor
                       }}
                     ></div>
                   </div>
@@ -559,11 +521,6 @@ function PredictiveDashboard() {
           </div>
         </div>
       )}
-
-      {/* Footer */}
-      <div className="mt-6 text-center text-xs text-[#45464d] border-t border-[#c6c6cd] pt-4">
-        MotoInsights v1.0 • Powered by Euro Motor Data
-      </div>
     </div>
   );
 }
