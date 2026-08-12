@@ -221,7 +221,7 @@ function AIAssistant() {
   const activeTitle = sessions.find((s) => s.id === activeSessionId)?.title || 'New chat'
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="ai-assistant-page flex h-screen bg-[#fafafa]">
       <AISessionSidebar
         sessions={sessions}
         activeSessionId={activeSessionId}
@@ -331,7 +331,7 @@ function AIAssistant() {
         .animate-pulse-slow {
           animation: pulse-slow 1.4s ease-in-out infinite;
         }
-        .material-symbols-outlined {
+        .ai-assistant-page .material-symbols-outlined {
           font-size: 18px;
         }
       `}</style>
