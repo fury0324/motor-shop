@@ -24,6 +24,7 @@ import { watchTransactions } from '../../lib/transactions'
 
 function CashierDashboard() {
   const [activeTab, setActiveTab] = useState('transaction')
+  const [initialTransactionType, setInitialTransactionType] = useState(null)
   const [stats, setStats] = useState({
     todaySales: 0,
     totalCustomers: 0,
@@ -262,8 +263,8 @@ function CashierDashboard() {
             Quick Actions
           </h3>
           <div className="space-y-2.5">
-            <button 
-              onClick={() => setActiveTab('transaction')}
+            <button
+              onClick={() => { setInitialTransactionType('model'); setActiveTab('transaction') }}
               className="w-full flex items-center gap-3 px-4 py-3 bg-[#f8f9ff] hover:bg-[#dce9ff] rounded-xl transition-all text-left hover:border hover:border-black group"
             >
               <div className="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition">
@@ -275,9 +276,9 @@ function CashierDashboard() {
               </div>
               <ArrowRight className="w-4 h-4 text-[#45464d] ml-auto opacity-0 group-hover:opacity-100 transition" />
             </button>
-            
-            <button 
-              onClick={() => setActiveTab('transaction')}
+
+            <button
+              onClick={() => { setInitialTransactionType('part'); setActiveTab('transaction') }}
               className="w-full flex items-center gap-3 px-4 py-3 bg-[#f8f9ff] hover:bg-[#dce9ff] rounded-xl transition-all text-left hover:border hover:border-black group"
             >
               <div className="w-9 h-9 bg-orange-100 rounded-lg flex items-center justify-center group-hover:bg-orange-200 transition">
@@ -289,8 +290,8 @@ function CashierDashboard() {
               </div>
               <ArrowRight className="w-4 h-4 text-[#45464d] ml-auto opacity-0 group-hover:opacity-100 transition" />
             </button>
-            
-            <button 
+
+            <button
               onClick={() => setActiveTab('customer')}
               className="w-full flex items-center gap-3 px-4 py-3 bg-[#f8f9ff] hover:bg-[#dce9ff] rounded-xl transition-all text-left hover:border hover:border-black group"
             >
@@ -350,7 +351,7 @@ function CashierDashboard() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => { setInitialTransactionType(null); setActiveTab(tab.id) }}
                 className={`
                   px-5 py-2.5 text-sm font-medium transition-all flex items-center gap-2 rounded-t-lg
                   ${activeTab === tab.id 
@@ -366,7 +367,7 @@ function CashierDashboard() {
           })}
         </div>
         <div className="mt-5">
-          {activeTab === 'transaction' && <NewTransaction />}
+          {activeTab === 'transaction' && <NewTransaction initialType={initialTransactionType} />}
           {activeTab === 'customer' && <RegisterCustomer />}
           {activeTab === 'inventory' && <CheckInventory />}
         </div>

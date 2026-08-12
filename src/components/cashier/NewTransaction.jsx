@@ -7,7 +7,7 @@ import { createTransaction, createPartsTransaction } from '../../lib/transaction
 import { useCurrentUser } from '../../lib/useCurrentUser'
 import { getSettings } from '../../lib/settings'
 
-function NewTransaction() {
+function NewTransaction({ initialType = null }) {
   const { user } = useCurrentUser()
   const [currentStep, setCurrentStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -191,6 +191,12 @@ function NewTransaction() {
     setPaymentType('Cash')
     setDownPayment('')
   }
+
+  // Quick Actions on the dashboard already say "Motorcycle" or "Parts" up
+  // front, so arriving from one shouldn't re-ask via the picker screen below.
+  useEffect(() => {
+    if (initialType) handleSelectTransactionType(initialType)
+  }, [initialType])
 
   const nextStep = () => {
     if (currentStep === 1 && !isStep1Complete()) {
