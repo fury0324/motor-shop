@@ -23,7 +23,7 @@ import { watchInventoryWithUnits } from '../../lib/inventory'
 import { watchTransactions } from '../../lib/transactions'
 
 function CashierDashboard() {
-  const [activeTab, setActiveTab] = useState('transaction')
+  const [activeTab, setActiveTab] = useState('customer')
   const [initialTransactionType, setInitialTransactionType] = useState(null)
   const [stats, setStats] = useState({
     todaySales: 0,
@@ -36,8 +36,10 @@ function CashierDashboard() {
   const [transactionsLoaded, setTransactionsLoaded] = useState(false)
   const isLoading = !(customersLoaded && inventoryLoaded && transactionsLoaded)
 
+  // Motorcycle/Parts transactions start only from the Quick Actions above —
+  // no tab for them, since a "New Transaction" tab would just re-show the
+  // same type picker those buttons already skip past.
   const tabs = [
-    { id: 'transaction', label: 'New Transaction', icon: ShoppingCart },
     { id: 'customer', label: 'Register Customer', icon: UserPlus },
     { id: 'inventory', label: 'Check Inventory', icon: Search }
   ]
