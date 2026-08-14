@@ -1,0 +1,14 @@
+name: 'ai-ci-agent'
+description: 'Investigates a CI failure and posts a root-cause comment'
+inputs:
+  llm-provider:
+    description: 'claude | openai | ...'
+    default: 'claude'
+  llm-api-key:
+    required: true
+  github-token:
+    description: 'Token used to read run context and post the PR comment'
+    default: '${{ github.token }}'
+runs:
+  using: 'docker'
+  image: 'Dockerfile'

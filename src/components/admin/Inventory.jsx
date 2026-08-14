@@ -39,14 +39,7 @@ function Inventory() {
   const [partSelectedFile, setPartSelectedFile] = useState(null)
   const [editPartImagePreview, setEditPartImagePreview] = useState(null)
   const [editPartSelectedFile, setEditPartSelectedFile] = useState(null)
-  
-  // New state for editing parts - additional fields
-  const [editPartDetails, setEditPartDetails] = useState({
-    description: '',
-    color: '',
-    notes: ''
-  })
-  
+
   const itemsPerPage = 12
   const [typeOptions, setTypeOptions] = useState(['Sport', 'Scooter', 'Off-road', 'Street', 'Touring', 'Cruiser'])
   const [defaultMarkupPercent, setDefaultMarkupPercent] = useState(0)
@@ -604,10 +597,16 @@ function Inventory() {
   )
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage)
 
-  // Reset pagination when filters change
-  useEffect(() => {
+  // Reset pagination when filters change. Adjusted during render (React's
+  // recommended pattern for this) rather than in an effect, since an
+  // effect would mean the list re-renders once with the stale page before
+  // snapping back to page 1.
+  const filterKey = `${searchTerm}|${activeTab}|${typeFilter}|${priceFilter}`
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey)
     setCurrentPage(1)
-  }, [searchTerm, activeTab, typeFilter, priceFilter])
+  }
 
   if (isLoading) {
     return (

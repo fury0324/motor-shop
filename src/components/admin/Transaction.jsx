@@ -24,7 +24,6 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
   const [amountPaid, setAmountPaid] = useState('')
   const [downPayment, setDownPayment] = useState('')
   const [terms, setTerms] = useState('12')
-  const [isLoading, setIsLoading] = useState(false)
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [transactionType, setTransactionType] = useState(null) // 'model' or 'part'

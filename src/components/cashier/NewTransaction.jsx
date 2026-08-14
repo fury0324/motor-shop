@@ -31,7 +31,10 @@ function NewTransaction() {
   const [terms, setTerms] = useState('12')
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [showProductDropdown, setShowProductDropdown] = useState(false)
-  const [transactionType, setTransactionType] = useState(null) // 'model' or 'part'
+  // initialType (from Quick Actions navigation) only ever matters at
+  // mount, matching every other field's own default below, so it's a
+  // lazy initializer rather than an effect that runs handleSelectTransactionType.
+  const [transactionType, setTransactionType] = useState(initialType || null) // 'model' or 'part'
   const [partQuantity, setPartQuantity] = useState(1)
   const [customerName, setCustomerName] = useState('')
   const [defaultMarkupPercent, setDefaultMarkupPercent] = useState(0)
@@ -195,10 +198,6 @@ function NewTransaction() {
     setPaymentType('Cash')
     setDownPayment('')
   }
-
-  useEffect(() => {
-    if (initialType) handleSelectTransactionType(initialType)
-  }, [initialType])
 
   const nextStep = () => {
     if (currentStep === 1 && !isStep1Complete()) {

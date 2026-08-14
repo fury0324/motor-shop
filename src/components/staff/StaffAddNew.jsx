@@ -3,19 +3,11 @@ import { useState } from 'react'
 import Swal from '../../lib/swal'
 import { newInventoryId, uploadInventoryImage, createInventoryItem } from '../../lib/inventory'
 import {
-  Plus, 
-  X, 
-  Upload, 
-  Image as ImageIcon,
+  X,
+  Upload,
   Bike,        // ✅ Instead of Motorcycle
-  Wrench, 
-  Package,
-  Tag,
-  DollarSign,
-  Box,
-  FileText,
-  Palette,
-  StickyNote
+  Wrench,
+  Package
 } from 'lucide-react'
 
 function StaffAddNew() {

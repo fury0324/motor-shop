@@ -10,11 +10,10 @@ import {
   deleteInventoryItem,
 } from '../../lib/inventory'
 import {
-  Package, 
-  Bike, 
-  Wrench, 
+  Package,
+  Bike,
+  Wrench,
   Search,
-  RefreshCw,
   Edit,
   Plus,
   Grid3x3,
@@ -415,9 +414,14 @@ function StaffInventory() {
   )
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage)
 
-  useEffect(() => {
+  // Reset pagination when filters change, adjusted during render (React's
+  // recommended pattern) rather than in an effect.
+  const filterKey = `${searchTerm}|${activeTab}|${typeFilter}|${priceFilter}`
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey)
     setCurrentPage(1)
-  }, [searchTerm, activeTab, typeFilter, priceFilter])
+  }
 
   // ============ LOADING ============
   if (isLoading) {
@@ -842,8 +846,7 @@ function StaffInventory() {
                     const units = item.units || []
                     const stockSummary = getStockSummary(units)
                     const isPart = item.category === 'Part'
-                    const stockStatus = getStockStatus(item.stock || item.quantity || 0)
-                    
+
                     return (
                       <tr key={item.id} className="hover:bg-[#f8f9ff] transition-colors">
                         <td className="px-4 py-3">
