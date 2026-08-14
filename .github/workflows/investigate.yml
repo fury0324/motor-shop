@@ -15,5 +15,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./ai-ci-agent
         with:
-          llm-provider: claude
+          llm-provider: openai
           llm-api-key: ${{ secrets.LLM_API_KEY }}
+        env:
+          # LLM_API_KEY is currently an OpenRouter key, not a raw OpenAI
+          # key — these two point the OpenAI-compatible provider at
+          # OpenRouter's endpoint instead. Switch back to llm-provider:
+          # claude and drop these once a funded Anthropic key is in use.
+          OPENAI_BASE_URL: https://openrouter.ai/api/v1/chat/completions
+          OPENAI_MODEL: openai/gpt-4o-mini
