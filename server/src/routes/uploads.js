@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { v2 as cloudinary } from 'cloudinary'
-import { HttpsError, assertStaffOrAbove, callable } from '../shared.js'
+import { HttpsError, assertStaffOrAbove } from '../shared.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })

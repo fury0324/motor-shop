@@ -12,13 +12,10 @@ import { ROLE_LABELS } from './roleLabels'
 // bar to keep header height and content spacing identical across pages.
 function PortalHeader({ role = 'staff', showDateTime = false, showSettings = false }) {
   const navigate = useNavigate()
-  const [userName, setUserName] = useState('')
+  // Derived directly from role + storage rather than effect-synced state —
+  // both reads are synchronous and only relevant at render time.
+  const userName = localStorage.getItem('userName') || sessionStorage.getItem('userName') || ROLE_LABELS[role] || 'User'
   const [now, setNow] = useState(new Date())
-
-  useEffect(() => {
-    const name = localStorage.getItem('userName') || sessionStorage.getItem('userName') || ROLE_LABELS[role] || 'User'
-    setUserName(name)
-  }, [role])
 
   useEffect(() => {
     if (!showDateTime) return

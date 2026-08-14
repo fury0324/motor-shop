@@ -22,7 +22,6 @@ function UserManagement() {
   const [showPassword, setShowPassword] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [selectedUser, setSelectedUser] = useState(null)
 
   const [newUser, setNewUser] = useState({
     name: '',
@@ -152,7 +151,6 @@ function UserManagement() {
   }
 
   const handleEditUser = (user) => {
-    setSelectedUser(user)
     setEditUser({
       id: user.id,
       name: user.name,
@@ -201,7 +199,6 @@ function UserManagement() {
 
       setShowEditModal(false)
       setEditUser({ id: '', name: '', email: '', role: '', status: '' })
-      setSelectedUser(null)
 
       Swal.fire({
         icon: 'success',
