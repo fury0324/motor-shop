@@ -23,9 +23,11 @@ type AssessmentRequest = assess.AssessmentRequest
 type Assessment = assess.Assessment
 
 // Provider is the single interface both ClaudeProvider and OpenAIProvider
-// implement, per §4.2.
+// implement, per §4.2. Assess returns a slice rather than a single
+// Assessment: exactly one "ci-failure" finding plus zero or more
+// additional review findings spotted in the same diff.
 type Provider interface {
-	Assess(ctx context.Context, req AssessmentRequest) (Assessment, error)
+	Assess(ctx context.Context, req AssessmentRequest) ([]Assessment, error)
 }
 
 // Get selects a Provider by name, per the llm-provider action input.

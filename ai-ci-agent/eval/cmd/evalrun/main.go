@@ -51,26 +51,34 @@ func main() {
 	var results []eval.Result
 	for _, f := range fixtures {
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-		a, err := p.Assess(ctx, f.Request())
+		findings, err := p.Assess(ctx, f.Request())
 		cancel()
 
-		r := eval.Score(f, a, err)
+		r := eval.Score(f, findings, err)
 		results = append(results, r)
 
 		status := "ok"
 		if err != nil {
 			status = "ERROR: " + err.Error()
+		} else if r.Err != nil {
+			status = "ERROR: " + r.Err.Error()
 		} else if !r.CauseMatch {
 			status = "cause mismatch"
+		}
+		extra := len(findings) - 1 // -1 for the mandatory ci-failure finding
+		if extra > 0 {
+			status += fmt.Sprintf(" (+%d other finding(s))", extra)
 		}
 		fmt.Printf("[%s/%s] %s\n", f.Language, f.ID, status)
 
 		if *verbose && err == nil {
-			fmt.Printf("    file:          %s:%d (anchored=%v)\n", a.File, a.Line, a.Anchored)
-			fmt.Printf("    severity:      %s\n", a.Severity)
-			fmt.Printf("    confidence:    %s\n", a.Confidence)
-			fmt.Printf("    comment:       %s\n", a.Comment)
-			fmt.Printf("    suggested_fix: %s\n", a.SuggestedFix)
+			for _, a := range findings {
+				fmt.Printf("    [%s] %s:%d (anchored=%v)\n", a.Category, a.File, a.Line, a.Anchored)
+				fmt.Printf("        severity:      %s\n", a.Severity)
+				fmt.Printf("        confidence:    %s\n", a.Confidence)
+				fmt.Printf("        comment:       %s\n", a.Comment)
+				fmt.Printf("        suggested_fix: %s\n", a.SuggestedFix)
+			}
 		}
 	}
 

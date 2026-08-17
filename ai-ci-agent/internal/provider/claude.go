@@ -11,21 +11,25 @@ import (
 	"github.com/dimension/ai-ci-agent/internal/assess"
 )
 
-const claudeAPIURL = "https://api.anthropic.com/v1/messages"
+const defaultClaudeAPIURL = "https://api.anthropic.com/v1/messages"
 
 // ClaudeProvider talks to the Anthropic Messages API. It is the default
-// provider (§4.1: llm-provider defaults to "claude").
+// provider (§4.1: llm-provider defaults to "claude"). BaseURL is
+// overridable so tests can point it at an httptest.Server, mirroring
+// OpenAIProvider.
 type ClaudeProvider struct {
-	APIKey string
-	Model  string
-	HTTP   *http.Client
+	APIKey  string
+	Model   string
+	BaseURL string
+	HTTP    *http.Client
 }
 
 func NewClaudeProvider(apiKey string, httpClient *http.Client) *ClaudeProvider {
 	return &ClaudeProvider{
-		APIKey: apiKey,
-		Model:  "claude-sonnet-5",
-		HTTP:   httpClient,
+		APIKey:  apiKey,
+		Model:   "claude-sonnet-5",
+		BaseURL: defaultClaudeAPIURL,
+		HTTP:    httpClient,
 	}
 }
 
@@ -52,34 +56,34 @@ type claudeResponse struct {
 }
 
 // Assess sends the gathered CI-failure context to Claude, parses the
-// result, and — if the first response isn't valid — makes one bounded
-// repair attempt before giving up (§7).
-func (p *ClaudeProvider) Assess(ctx context.Context, req AssessmentRequest) (Assessment, error) {
+// resulting findings array, and — if the first response isn't valid —
+// makes one bounded repair attempt before giving up (§7).
+func (p *ClaudeProvider) Assess(ctx context.Context, req AssessmentRequest) ([]Assessment, error) {
 	prompt := assess.BuildPrompt(req)
 
-	raw, err := p.complete(ctx, assess.SystemPrompt, prompt, 2048)
+	raw, err := p.complete(ctx, assess.SystemPrompt, prompt, 3072)
 	if err != nil {
-		return Assessment{}, fmt.Errorf("claude: assess call failed: %w", err)
+		return nil, fmt.Errorf("claude: assess call failed: %w", err)
 	}
 
-	a, parseErr := assess.ParseAssessment(raw)
+	findings, parseErr := assess.ParseAssessments(raw)
 	if parseErr == nil {
-		assess.ValidateAnchor(req, &a)
-		return a, nil
+		assess.ValidateAnchors(req, findings)
+		return findings, nil
 	}
 
-	repaired, repairErr := p.complete(ctx, assess.RepairSystemPrompt, raw, 1024)
+	repaired, repairErr := p.complete(ctx, assess.RepairSystemPrompt, raw, 2048)
 	if repairErr != nil {
-		return Assessment{}, fmt.Errorf("%w: original parse error: %v; repair call failed: %v", assess.ErrMalformed, parseErr, repairErr)
+		return nil, fmt.Errorf("%w: original parse error: %v; repair call failed: %v", assess.ErrMalformed, parseErr, repairErr)
 	}
 
-	a, err = assess.ParseAssessment(repaired)
+	findings, err = assess.ParseAssessments(repaired)
 	if err != nil {
-		return Assessment{}, fmt.Errorf("%w: %v", assess.ErrMalformed, err)
+		return nil, fmt.Errorf("%w: %v", assess.ErrMalformed, err)
 	}
 
-	assess.ValidateAnchor(req, &a)
-	return a, nil
+	assess.ValidateAnchors(req, findings)
+	return findings, nil
 }
 
 // complete is the low-level call shared by the initial assessment and the
@@ -97,7 +101,7 @@ func (p *ClaudeProvider) complete(ctx context.Context, system, user string, maxT
 		return "", err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, claudeAPIURL, bytes.NewReader(b))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.BaseURL, bytes.NewReader(b))
 	if err != nil {
 		return "", err
 	}

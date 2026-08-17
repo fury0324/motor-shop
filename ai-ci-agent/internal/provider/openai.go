@@ -34,18 +34,13 @@ func NewOpenAIProvider(apiKey string, httpClient *http.Client) *OpenAIProvider {
 }
 
 type openAIRequest struct {
-	Model          string              `json:"model"`
-	Messages       []openAIMessage     `json:"messages"`
-	ResponseFormat *openAIResponseType `json:"response_format,omitempty"`
+	Model    string          `json:"model"`
+	Messages []openAIMessage `json:"messages"`
 }
 
 type openAIMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
-}
-
-type openAIResponseType struct {
-	Type string `json:"type"`
 }
 
 type openAIResponse struct {
@@ -61,32 +56,32 @@ type openAIResponse struct {
 // flow, only the wire format differs. Keeping both providers' Assess
 // methods structurally identical is what makes "provider parity" (§6.1)
 // something the eval harness can actually verify.
-func (p *OpenAIProvider) Assess(ctx context.Context, req AssessmentRequest) (Assessment, error) {
+func (p *OpenAIProvider) Assess(ctx context.Context, req AssessmentRequest) ([]Assessment, error) {
 	prompt := assess.BuildPrompt(req)
 
 	raw, err := p.complete(ctx, assess.SystemPrompt, prompt)
 	if err != nil {
-		return Assessment{}, fmt.Errorf("openai: assess call failed: %w", err)
+		return nil, fmt.Errorf("openai: assess call failed: %w", err)
 	}
 
-	a, parseErr := assess.ParseAssessment(raw)
+	findings, parseErr := assess.ParseAssessments(raw)
 	if parseErr == nil {
-		assess.ValidateAnchor(req, &a)
-		return a, nil
+		assess.ValidateAnchors(req, findings)
+		return findings, nil
 	}
 
 	repaired, repairErr := p.complete(ctx, assess.RepairSystemPrompt, raw)
 	if repairErr != nil {
-		return Assessment{}, fmt.Errorf("%w: original parse error: %v; repair call failed: %v", assess.ErrMalformed, parseErr, repairErr)
+		return nil, fmt.Errorf("%w: original parse error: %v; repair call failed: %v", assess.ErrMalformed, parseErr, repairErr)
 	}
 
-	a, err = assess.ParseAssessment(repaired)
+	findings, err = assess.ParseAssessments(repaired)
 	if err != nil {
-		return Assessment{}, fmt.Errorf("%w: %v", assess.ErrMalformed, err)
+		return nil, fmt.Errorf("%w: %v", assess.ErrMalformed, err)
 	}
 
-	assess.ValidateAnchor(req, &a)
-	return a, nil
+	assess.ValidateAnchors(req, findings)
+	return findings, nil
 }
 
 func (p *OpenAIProvider) complete(ctx context.Context, system, user string) (string, error) {
@@ -96,7 +91,6 @@ func (p *OpenAIProvider) complete(ctx context.Context, system, user string) (str
 			{Role: "system", Content: system},
 			{Role: "user", Content: user},
 		},
-		ResponseFormat: &openAIResponseType{Type: "json_object"},
 	}
 	b, err := json.Marshal(body)
 	if err != nil {

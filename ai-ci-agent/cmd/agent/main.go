@@ -129,10 +129,10 @@ func investigate(ctx context.Context, client *ghclient.Client, llmProvider provi
 	// comment, so it's threaded through renderBody below rather than
 	// treated as fatal. Assess is skipped in that case — there's no
 	// point prompting the model with an incomplete AssessmentRequest.
-	var assessment provider.Assessment
+	var findings []provider.Assessment
 	assessErr := gatherErr
 	if gatherErr == nil {
-		assessment, assessErr = llmProvider.Assess(ctx, result.Request)
+		findings, assessErr = llmProvider.Assess(ctx, result.Request)
 	}
 
 	staleHeadSHA, headErr := currentHead(ctx, client, result.PRNumber)
@@ -146,7 +146,7 @@ func investigate(ctx context.Context, client *ghclient.Client, llmProvider provi
 		staleHeadSHA = "" // not stale
 	}
 
-	body := renderBody(assessErr, assessment, result, staleHeadSHA)
+	body := renderBody(assessErr, findings, result, staleHeadSHA)
 
 	url, alreadyPosted, err := post.Post(ctx, client, result.PRNumber, result.HeadSHA, body)
 	if err != nil {
@@ -196,10 +196,10 @@ func reconcile(ctx context.Context, client *ghclient.Client, llmProvider provide
 
 // renderBody turns the outcome of the Assess call into the comment body
 // to post, applying §7's degrade-gracefully rules.
-func renderBody(assessErr error, a provider.Assessment, result *gather.Result, staleHeadSHA string) string {
+func renderBody(assessErr error, findings []provider.Assessment, result *gather.Result, staleHeadSHA string) string {
 	switch {
 	case assessErr == nil:
-		return post.RenderAssessment(a, result.HeadSHA, staleHeadSHA)
+		return post.RenderAssessments(findings, result.HeadSHA, staleHeadSHA)
 
 	case errors.Is(assessErr, assess.ErrMalformed):
 		log.Printf("assessment malformed after repair attempt: %v", assessErr)

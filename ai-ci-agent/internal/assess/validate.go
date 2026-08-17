@@ -14,6 +14,21 @@ var hunkHeader = regexp.MustCompile(`^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
 // claim the Action cannot verify against its own gathered context is
 // downgraded here rather than posted as a confident, specific location.
 func ValidateAnchor(req AssessmentRequest, a *Assessment) {
+	changed := ChangedLines(req)
+	validateAnchorAgainst(changed, a)
+}
+
+// ValidateAnchors applies the same guardrail across every finding a
+// provider returned, computing the changed-line map once rather than
+// re-parsing the diff per finding.
+func ValidateAnchors(req AssessmentRequest, findings []Assessment) {
+	changed := ChangedLines(req)
+	for i := range findings {
+		validateAnchorAgainst(changed, &findings[i])
+	}
+}
+
+func validateAnchorAgainst(changed map[string]map[int]bool, a *Assessment) {
 	if !a.Anchored {
 		return
 	}
@@ -21,8 +36,6 @@ func ValidateAnchor(req AssessmentRequest, a *Assessment) {
 		a.Anchored = false
 		return
 	}
-
-	changed := ChangedLines(req)
 	lines, ok := changed[a.File]
 	if !ok || !lines[a.Line] {
 		a.Anchored = false
