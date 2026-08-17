@@ -14,6 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./ai-ci-agent
+        id: agent
         with:
           llm-provider: openai
           llm-api-key: ${{ secrets.LLM_API_KEY }}
@@ -26,17 +27,28 @@ jobs:
           OPENAI_MODEL: openai/gpt-4o-mini
 
       # Best-effort notification, never blocks or fails the job: forwards
-      # a link to the run without changing how the assessment itself is
-      # produced, per the ADR's own framing of how Slack/Discord delivery
-      # should compose on top of this design if reintroduced.
+      # the full assessment without changing how it's produced, per the
+      # ADR's own framing of how chat delivery should compose on top of
+      # this design if reintroduced. comment-body is LLM-generated text
+      # (untrusted), so it's passed via env rather than interpolated
+      # directly into the shell script, and built into JSON with jq
+      # rather than hand-escaped.
       - name: Notify Discord
         if: always()
         continue-on-error: true
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          COMMENT_URL: ${{ steps.agent.outputs.comment-url }}
+          COMMENT_BODY: ${{ steps.agent.outputs.comment-body }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
         run: |
-          if [ -z "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
+          if [ -z "$WEBHOOK" ]; then
             echo "DISCORD_WEBHOOK_URL not set, skipping notification"
             exit 0
           fi
-          curl -sf -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"content\": \"🤖 AI CI Agent investigated a CI failure on ${{ github.repository }} — ${{ github.event.workflow_run.html_url }}\"}"
+          link="${COMMENT_URL:-$RUN_URL}"
+          payload=$(jq -n \
+            --arg desc "$COMMENT_BODY" \
+            --arg url "$link" \
+            '{embeds: [{title: "🤖 AI CI Agent — investigation results", url: $url, description: (if ($desc | length) > 4000 then ($desc[0:4000] + "…") else $desc end), color: 15105570}]}')
+          curl -sf -X POST "$WEBHOOK" -H "Content-Type: application/json" -d "$payload"

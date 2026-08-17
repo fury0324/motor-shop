@@ -14,6 +14,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -157,6 +159,9 @@ func investigate(ctx context.Context, client *ghclient.Client, llmProvider provi
 	} else {
 		log.Printf("run %d: posted assessment: %s", runID, url)
 	}
+
+	writeOutput("comment-url", url)
+	writeOutput("comment-body", body)
 	return nil
 }
 
@@ -268,4 +273,35 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// writeOutput sets a GitHub Actions step output via the $GITHUB_OUTPUT
+// file protocol, using the multiline-safe delimiter form since
+// comment-body is a full markdown comment, not a single-line value. A
+// no-op outside a real Actions run (e.g. local testing), where
+// GITHUB_OUTPUT isn't set — outputs are a convenience for the calling
+// workflow (e.g. forwarding to a chat notification), not something the
+// action's own behavior depends on.
+func writeOutput(name, value string) {
+	path := os.Getenv("GITHUB_OUTPUT")
+	if path == "" {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("warning: could not write output %q: %v", name, err)
+		return
+	}
+	defer f.Close()
+
+	delim := randomDelimiter()
+	fmt.Fprintf(f, "%s<<%s\n%s\n%s\n", name, delim, value, delim)
+}
+
+func randomDelimiter() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "ghadelim_fallback"
+	}
+	return "ghadelim_" + hex.EncodeToString(b)
 }
