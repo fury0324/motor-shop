@@ -26,29 +26,10 @@ jobs:
           OPENAI_BASE_URL: https://openrouter.ai/api/v1/chat/completions
           OPENAI_MODEL: openai/gpt-4o-mini
 
-      # Best-effort notification, never blocks or fails the job: forwards
-      # the full assessment without changing how it's produced, per the
-      # ADR's own framing of how chat delivery should compose on top of
-      # this design if reintroduced. comment-body is LLM-generated text
-      # (untrusted), so it's passed via env rather than interpolated
-      # directly into the shell script, and built into JSON with jq
-      # rather than hand-escaped.
-      - name: Notify Discord
-        if: always()
-        continue-on-error: true
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          COMMENT_URL: ${{ steps.agent.outputs.comment-url }}
-          COMMENT_BODY: ${{ steps.agent.outputs.comment-body }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
-        run: |
-          if [ -z "$WEBHOOK" ]; then
-            echo "DISCORD_WEBHOOK_URL not set, skipping notification"
-            exit 0
-          fi
-          link="${COMMENT_URL:-$RUN_URL}"
-          payload=$(jq -n \
-            --arg desc "$COMMENT_BODY" \
-            --arg url "$link" \
-            '{embeds: [{title: "🤖 AI CI Agent — investigation results", url: $url, description: (if ($desc | length) > 4000 then ($desc[0:4000] + "…") else $desc end), color: 15105570}]}')
-          curl -sf -X POST "$WEBHOOK" -H "Content-Type: application/json" -d "$payload"
+      # Discord notification for ai-ci-agent's comment is handled by a
+      # repo-level GitHub webhook (Settings > Webhooks) pointed at the
+      # Discord webhook URL with "/github" appended — Discord natively
+      # renders GitHub-formatted webhook payloads, which looks better
+      # than anything a custom curl step could produce, and needs no
+      # code here. comment-url/comment-body are still exposed as action
+      # outputs (see action.yml) for any other consumer that wants them.
