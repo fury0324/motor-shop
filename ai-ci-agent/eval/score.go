@@ -10,11 +10,15 @@ import (
 
 var severityRank = map[string]int{"P0": 0, "P1": 1, "P2": 2, "P3": 3, "nit": 4}
 
-// Result is one fixture's scored outcome.
+// Result is one fixture's scored outcome. Findings is everything the
+// provider returned (the mandatory ci-failure diagnosis plus any extra
+// review findings); scoring below only judges the ci-failure one against
+// the fixture's known answer — there's no "known answer" for whatever
+// extra correctness/security/style findings a model happens to surface.
 type Result struct {
-	Fixture    Fixture
-	Assessment provider.Assessment
-	Err        error
+	Fixture  Fixture
+	Findings []provider.Assessment
+	Err      error
 
 	CauseMatch  bool // §9: "does the stated cause match the known cause" (keyword proxy)
 	SeverityOK  bool // severity is at least as urgent as the fixture's MinSeverity
@@ -22,13 +26,19 @@ type Result struct {
 }
 
 // Score scores one provider response against its fixture's known answer.
-func Score(f Fixture, a provider.Assessment, err error) Result {
-	r := Result{Fixture: f, Assessment: a, Err: err}
+func Score(f Fixture, findings []provider.Assessment, err error) Result {
+	r := Result{Fixture: f, Findings: findings, Err: err}
 	if err != nil {
 		return r
 	}
 
-	comment := strings.ToLower(a.Comment)
+	primary := ciFailureFinding(findings)
+	if primary == nil {
+		r.Err = fmt.Errorf("no ci-failure finding in provider response")
+		return r
+	}
+
+	comment := strings.ToLower(primary.Comment)
 	for _, kw := range f.ExpectedCauseKeywords {
 		if strings.Contains(comment, strings.ToLower(kw)) {
 			r.CauseMatch = true
@@ -38,7 +48,7 @@ func Score(f Fixture, a provider.Assessment, err error) Result {
 
 	if f.MinSeverity == "" {
 		r.SeverityOK = true
-	} else if got, ok1 := severityRank[a.Severity]; ok1 {
+	} else if got, ok1 := severityRank[primary.Severity]; ok1 {
 		if want, ok2 := severityRank[f.MinSeverity]; ok2 {
 			r.SeverityOK = got <= want // lower rank number = more urgent
 		}
@@ -50,9 +60,21 @@ func Score(f Fixture, a provider.Assessment, err error) Result {
 	// have been anchored" from a fixture alone, so this just checks the
 	// claim is internally consistent (an anchored claim has both a file
 	// and a positive line).
-	r.AnchorValid = !a.Anchored || (a.File != "" && a.Line > 0)
+	r.AnchorValid = !primary.Anchored || (primary.File != "" && primary.Line > 0)
 
 	return r
+}
+
+// ciFailureFinding returns the mandatory ci-failure finding out of a
+// provider's response, or nil if the provider somehow omitted it
+// (contrary to the contract assess.ParseAssessments enforces).
+func ciFailureFinding(findings []provider.Assessment) *provider.Assessment {
+	for i := range findings {
+		if findings[i].Category == "ci-failure" {
+			return &findings[i]
+		}
+	}
+	return nil
 }
 
 // Summary aggregates results overall and per language.

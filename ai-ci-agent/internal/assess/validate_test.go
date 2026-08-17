@@ -101,3 +101,24 @@ func TestValidateAnchor_FallsBackToPerFilePatch(t *testing.T) {
 		t.Error("a line changed in a per-file patch should anchor even without a combined diff")
 	}
 }
+
+func TestValidateAnchors_AppliesToEveryFinding(t *testing.T) {
+	req := AssessmentRequest{Diff: sampleDiff}
+	findings := []Assessment{
+		{File: "vehicles/garage.go", Line: 41, Anchored: true},  // real anchor
+		{File: "vehicles/garage.go", Line: 999, Anchored: true}, // outside the diff
+		{File: "vehicles/other.go", Line: 7, Anchored: true},    // real anchor, different file
+	}
+
+	ValidateAnchors(req, findings)
+
+	if !findings[0].Anchored {
+		t.Error("finding 0 should remain anchored")
+	}
+	if findings[1].Anchored {
+		t.Error("finding 1 should be downgraded — line 999 is outside the diff")
+	}
+	if !findings[2].Anchored {
+		t.Error("finding 2 should remain anchored")
+	}
+}

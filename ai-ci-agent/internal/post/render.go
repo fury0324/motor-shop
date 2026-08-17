@@ -7,16 +7,16 @@ import (
 	"github.com/dimension/ai-ci-agent/internal/provider"
 )
 
-// RenderAssessment builds the PR comment body for a successful
-// assessment, using the field layout shared with the PR review agent
-// (§4.4) plus the CI-specific confidence field. staleHeadSHA is empty
-// unless the PR's head moved since context was gathered, in which case
-// §6.3 requires the comment to say so explicitly and drop inline
-// anchoring.
-func RenderAssessment(a provider.Assessment, reviewedSHA, staleHeadSHA string) string {
+// RenderAssessments builds the PR comment body for a successful run.
+// findings always contains exactly one "ci-failure" entry (the mandatory
+// diagnosis) plus zero or more additional review findings spotted in the
+// same diff; all of them post as one comment, not one per finding.
+// staleHeadSHA is empty unless the PR's head moved since context was
+// gathered, in which case §6.3 requires the comment to say so explicitly
+// and drop inline anchoring for every finding.
+func RenderAssessments(findings []provider.Assessment, reviewedSHA, staleHeadSHA string) string {
 	var b strings.Builder
-
-	b.WriteString("### 🤖 AI CI Agent — root-cause assessment\n\n")
+	b.WriteString("### 🤖 AI CI Agent — investigation results\n\n")
 
 	if staleHeadSHA != "" {
 		b.WriteString(fmt.Sprintf(
@@ -24,9 +24,51 @@ func RenderAssessment(a provider.Assessment, reviewedSHA, staleHeadSHA string) s
 			short(reviewedSHA), short(staleHeadSHA),
 		))
 	}
-
 	stale := staleHeadSHA != ""
 
+	primary, extra := splitPrimary(findings)
+
+	if primary != nil {
+		b.WriteString(renderFinding(*primary, stale))
+	}
+
+	if len(extra) > 0 {
+		b.WriteString("\n---\n**Other findings noticed in this diff**\n")
+		for _, f := range extra {
+			b.WriteString("\n")
+			b.WriteString(renderFinding(f, stale))
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(marker(reviewedSHA))
+	return b.String()
+}
+
+// splitPrimary pulls out the mandatory ci-failure finding (rendered
+// first, on its own) from any additional findings. Falls back to
+// treating the first entry as primary if — contrary to the §-mandated
+// contract enforced in assess.ParseAssessments — no ci-failure finding
+// is present, so rendering never has to handle a nil primary.
+func splitPrimary(findings []provider.Assessment) (*provider.Assessment, []provider.Assessment) {
+	for i := range findings {
+		if findings[i].Category == "ci-failure" {
+			primary := findings[i]
+			rest := make([]provider.Assessment, 0, len(findings)-1)
+			rest = append(rest, findings[:i]...)
+			rest = append(rest, findings[i+1:]...)
+			return &primary, rest
+		}
+	}
+	if len(findings) > 0 {
+		primary := findings[0]
+		return &primary, findings[1:]
+	}
+	return nil, nil
+}
+
+func renderFinding(a provider.Assessment, stale bool) string {
+	var b strings.Builder
 	b.WriteString(fmt.Sprintf("**Category:** %s\n", a.Category))
 	b.WriteString(fmt.Sprintf("**Severity:** %s\n", a.Severity))
 	b.WriteString(fmt.Sprintf("**Confidence:** %s\n", a.Confidence))
@@ -39,14 +81,14 @@ func RenderAssessment(a provider.Assessment, reviewedSHA, staleHeadSHA string) s
 		b.WriteString("**Location:** not identified\n")
 	}
 
-	b.WriteString("\n**Likely cause**\n")
+	b.WriteString("\n")
 	b.WriteString(orNone(a.Comment))
 
-	b.WriteString("\n\n**Suggested fix**\n")
-	b.WriteString(orNone(a.SuggestedFix))
-
-	b.WriteString("\n\n")
-	b.WriteString(marker(reviewedSHA))
+	if strings.TrimSpace(a.SuggestedFix) != "" {
+		b.WriteString("\n\n**Suggested fix:** ")
+		b.WriteString(a.SuggestedFix)
+	}
+	b.WriteString("\n")
 	return b.String()
 }
 
@@ -55,7 +97,7 @@ func RenderAssessment(a provider.Assessment, reviewedSHA, staleHeadSHA string) s
 func RenderFallback(runHTMLURL, sha string) string {
 	var b strings.Builder
 	b.WriteString("### 🤖 AI CI Agent\n\n")
-	b.WriteString("The LLM provider was unavailable or timed out, so no automated root-cause assessment could be generated for this failure.\n\n")
+	b.WriteString("The LLM provider was unavailable or timed out, so no automated investigation could be generated for this failure.\n\n")
 	if runHTMLURL != "" {
 		b.WriteString(fmt.Sprintf("Raw logs: %s\n\n", runHTMLURL))
 	}
@@ -69,7 +111,7 @@ func RenderFallback(runHTMLURL, sha string) string {
 func RenderMinimal(reason, sha string) string {
 	var b strings.Builder
 	b.WriteString("### 🤖 AI CI Agent\n\n")
-	b.WriteString(fmt.Sprintf("Unable to produce a full assessment for this failure: %s\n\n", reason))
+	b.WriteString(fmt.Sprintf("Unable to produce a full investigation for this failure: %s\n\n", reason))
 	b.WriteString(marker(sha))
 	return b.String()
 }
