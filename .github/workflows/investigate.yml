@@ -24,3 +24,19 @@ jobs:
           # claude and drop these once a funded Anthropic key is in use.
           OPENAI_BASE_URL: https://openrouter.ai/api/v1/chat/completions
           OPENAI_MODEL: openai/gpt-4o-mini
+
+      # Best-effort notification, never blocks or fails the job: forwards
+      # a link to the run without changing how the assessment itself is
+      # produced, per the ADR's own framing of how Slack/Discord delivery
+      # should compose on top of this design if reintroduced.
+      - name: Notify Discord
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -z "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
+            echo "DISCORD_WEBHOOK_URL not set, skipping notification"
+            exit 0
+          fi
+          curl -sf -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"🤖 AI CI Agent investigated a CI failure on ${{ github.repository }} — ${{ github.event.workflow_run.html_url }}\"}"
