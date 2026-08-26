@@ -345,13 +345,6 @@ function TransactionHistory() {
 
   return (
     <div className="p-4 sm:p-5">
-      {/* Header */}
-      <div className="mb-6">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-[#0b1c30]">Transaction History</h2>
-          <p className="text-sm text-[#45464d] mt-1">View and manage all sales transactions.</p>
-        </div>
-      </div>
 
       {/* Tabs */}
       <div className="flex gap-2 mb-4 border-b border-[#c6c6cd]">

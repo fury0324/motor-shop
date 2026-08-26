@@ -308,11 +308,7 @@ function CustomerRegistration() {
           <span className="material-symbols-outlined text-sm">chevron_right</span>
           <span className="text-black font-semibold">Register Customer</span>
         </nav>
-        <div className="flex justify-between items-end">
-          <div>
-            <h2 className="text-2xl font-bold text-[#0b1c30]">Customer Registration</h2>
-            <p className="text-sm text-[#45464d] mt-1">Register a new client into the Euro Motor ecosystem.</p>
-          </div>
+        <div className="flex justify-end">
           <div className="hidden md:flex gap-3">
             <button 
               onClick={() => {

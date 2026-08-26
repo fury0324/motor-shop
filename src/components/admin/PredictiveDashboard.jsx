@@ -144,11 +144,7 @@ function PredictiveDashboard() {
   return (
     <div className="p-4 sm:p-5">
       {/* Header Section */}
-      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-[#0b1c30]">Predictions</h2>
-          <p className="text-sm text-[#45464d] mt-1">Sales trends and inventory forecasts.</p>
-        </div>
+      <div className="mb-6 flex justify-end">
         <button
           onClick={fetchPredictiveData}
           className="px-4 py-2 bg-white border border-[#c6c6cd] rounded-lg text-xs font-semibold hover:bg-gray-50 transition-colors flex items-center gap-2"

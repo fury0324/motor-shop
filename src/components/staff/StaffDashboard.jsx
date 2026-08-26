@@ -7,8 +7,7 @@ import {
   Wrench,
   Clock,
   RefreshCw,
-  CheckCircle2,
-  Activity
+  CheckCircle2
 } from 'lucide-react'
 import { watchInventory } from '../../lib/inventory'
 import { watchTransactions, watchPartsTransactions } from '../../lib/transactions'
@@ -117,17 +116,6 @@ function StaffDashboard() {
 
   return (
     <div className="p-4 sm:p-6 max-w-[1440px] mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-[#0b1c30] flex items-center gap-2">
-            <Activity className="w-6 h-6" />
-            Staff Dashboard
-          </h2>
-          <p className="text-sm text-[#45464d]">Manage inventory, add new items, and track stock levels.</p>
-        </div>
-      </div>
-
       {/* Stats Cards - 4 columns */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white border border-[#c6c6cd] rounded-xl p-5 shadow-sm hover:shadow-md transition hover:border-black group">

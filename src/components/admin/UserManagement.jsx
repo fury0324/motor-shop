@@ -277,12 +277,8 @@ function UserManagement() {
 
   return (
     <div className="p-4 sm:p-5">
-      <div className="flex justify-between items-start mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-[#0b1c30]">User Management</h2>
-          <p className="text-base text-[#45464d] mt-1">Manage system users, roles, and permissions.</p>
-        </div>
-        <button 
+      <div className="flex justify-end mb-6">
+        <button
           onClick={() => setShowModal(true)}
           disabled={isCreating}
           className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-lg text-xs font-semibold tracking-wide hover:opacity-90 transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"

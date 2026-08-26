@@ -6,8 +6,7 @@ import {
   X,
   Upload,
   Bike,        // ✅ Instead of Motorcycle
-  Wrench,
-  Package
+  Wrench
 } from 'lucide-react'
 
 function StaffAddNew() {
@@ -217,12 +216,6 @@ function StaffAddNew() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h2 className="text-2xl font-bold text-[#0b1c30] flex items-center gap-2 mb-2">
-        <Package className="w-6 h-6" />
-        Add New Item
-      </h2>
-      <p className="text-sm text-[#45464d] mb-6">Add a new motorcycle model or part to inventory</p>
-
       {!addItemType ? (
         // Step 1: Choose Model or Part
         <div className="bg-white border border-[#c6c6cd] rounded-xl p-6 shadow-sm">
