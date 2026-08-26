@@ -97,11 +97,6 @@ function CheckInventory() {
 
   return (
     <div className="p-4 sm:p-5">
-      {/* Header */}
-      <div className="mb-6">
-        <h3 className="text-lg font-semibold text-[#0b1c30]">Inventory List</h3>
-        <p className="text-sm text-[#45464d] mt-1">View all available motorcycle models and parts.</p>
-      </div>
 
       {/* Tabs */}
       <div className="flex gap-2 mb-4 border-b border-[#c6c6cd]">

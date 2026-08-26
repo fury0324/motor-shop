@@ -11,7 +11,6 @@ import {
   CalendarDays,
   Activity,
   ArrowRight,
-  Wallet,
   BadgeCheck,
   TrendingUp,
   TrendingDown
@@ -146,18 +145,9 @@ function CashierDashboard() {
 
   return (
     <div className="p-4 sm:p-5">
-      {/* Header with Greeting */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[#0b1c30] flex items-center gap-2">
-            <Wallet className="w-6 h-6 text-[#0b1c30]" />
-            Cashier Dashboard
-          </h1>
-          <p className="text-sm text-[#45464d] mt-1">
-            Welcome back! 👋 Real-time performance metrics and inventory health.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-[#45464d] mt-2 sm:mt-0 bg-white px-4 py-2 rounded-lg border border-[#c6c6cd]">
+      {/* Date display */}
+      <div className="flex justify-end mb-6">
+        <div className="flex items-center gap-2 text-sm text-[#45464d] bg-white px-4 py-2 rounded-lg border border-[#c6c6cd]">
           <CalendarDays className="w-4 h-4" />
           {formatDate()}
         </div>

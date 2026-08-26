@@ -58,10 +58,6 @@ function CustomerList() {
 
   return (
     <div className="p-4 sm:p-5">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-[#0b1c30]">Customer List</h2>
-        <p className="text-sm text-[#45464d] mt-1">View all registered customers.</p>
-      </div>
 
       <div className="bg-white rounded-xl border border-[#c6c6cd] shadow-sm overflow-hidden">
         <div className="p-4 border-b border-[#c6c6cd]">

@@ -43,10 +43,6 @@ function AdminSettings() {
 
   return (
     <div className="p-4 sm:p-5">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-[#0b1c30]">Settings</h2>
-        <p className="text-base text-[#45464d] mt-1">Shop-wide defaults used across the app.</p>
-      </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-md shadow-sm">
         <h3 className="text-base font-semibold text-[#0b1c30] mb-1">Installment Pricing</h3>

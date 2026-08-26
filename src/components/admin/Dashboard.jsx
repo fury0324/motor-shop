@@ -146,20 +146,14 @@ function Dashboard() {
   return (
     <div className="p-4 sm:p-5">
       {/* Header Section */}
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-[#0b1c30]">Dashboard</h2>
-            <p className="text-sm text-[#45464d] mt-1">Real-time performance metrics and inventory health.</p>
-          </div>
-          <button 
-            onClick={fetchDashboardData}
-            className="px-4 py-2 bg-white border border-[#c6c6cd] rounded-lg text-xs font-semibold hover:bg-gray-50 transition-colors flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined text-sm">refresh</span>
-            Refresh
-          </button>
-        </div>
+      <div className="mb-6 flex justify-end">
+        <button
+          onClick={fetchDashboardData}
+          className="px-4 py-2 bg-white border border-[#c6c6cd] rounded-lg text-xs font-semibold hover:bg-gray-50 transition-colors flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-sm">refresh</span>
+          Refresh
+        </button>
       </div>
 
       {/* KPI Cards Grid */}

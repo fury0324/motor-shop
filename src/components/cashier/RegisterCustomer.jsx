@@ -308,12 +308,8 @@ function RegisterCustomer() {
           <span className="material-symbols-outlined text-sm">chevron_right</span>
           <span className="text-black font-semibold">Register Customer</span>
         </nav>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div>
-            <h2 className="text-2xl font-bold text-[#0b1c30]">Register Customer</h2>
-            <p className="text-sm text-[#45464d] mt-1">Register a new client into the Euro Motor ecosystem.</p>
-          </div>
-          <button 
+        <div className="flex justify-end">
+          <button
             onClick={handleSubmit}
             disabled={isSubmitting}
             className="px-4 py-2 bg-black text-white text-xs font-semibold rounded-lg shadow-sm hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-50 w-full sm:w-auto"

@@ -408,10 +408,6 @@ function Transaction({ onNavigateToAddCustomer, onNavigateToTransactionList }) {
             <span className="material-symbols-outlined text-sm">chevron_right</span>
             <span className="text-black font-semibold">New Transaction</span>
           </nav>
-          <div>
-            <h2 className="text-2xl font-bold text-[#0b1c30]">New Transaction</h2>
-            <p className="text-sm text-[#45464d] mt-1">What type of transaction would you like to process?</p>
-          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-4xl mx-auto mt-8">

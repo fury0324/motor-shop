@@ -374,11 +374,6 @@ function NewTransaction() {
   if (!transactionType) {
     return (
       <div className="p-4 sm:p-5">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-[#0b1c30]">New Transaction</h2>
-          <p className="text-sm text-[#45464d] mt-1">What type of transaction would you like to process?</p>
-        </div>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-4xl mx-auto mt-8">
           <button
             onClick={() => handleSelectTransactionType('model')}

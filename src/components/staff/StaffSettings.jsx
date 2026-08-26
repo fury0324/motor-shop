@@ -28,9 +28,6 @@ function StaffSettings() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <h2 className="text-2xl font-bold text-[#0b1c30] mb-2">Settings</h2>
-      <p className="text-sm text-[#45464d] mb-6">Manage your account and application preferences</p>
-
       <div className="bg-white border border-[#c6c6cd] rounded-xl p-6 shadow-sm space-y-6">
         {/* Profile Section */}
         <div>

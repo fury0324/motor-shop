@@ -619,12 +619,8 @@ function Inventory() {
   return (
     <div className="p-4 sm:p-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-[#0b1c30]">Inventory Management</h2>
-          <p className="text-sm sm:text-base text-[#45464d] mt-1">Manage motorcycle models, parts, and individual units.</p>
-        </div>
-        <button 
+      <div className="flex justify-end mb-6">
+        <button
           onClick={openAddModal}
           className="flex items-center gap-2 bg-black text-white px-3 py-2 sm:px-4 rounded-lg text-xs font-semibold tracking-wide hover:opacity-90 transition-all shadow-sm active:scale-95 w-full sm:w-auto justify-center"
         >

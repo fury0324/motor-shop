@@ -590,11 +590,7 @@ function TransactionList({ onNavigateToTransaction }) {
           <span className="material-symbols-outlined text-sm">chevron_right</span>
           <span className="text-black font-semibold">Transaction List</span>
         </nav>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-[#0b1c30]">Transaction List</h2>
-            <p className="text-sm text-[#45464d] mt-1">View and manage all sales transactions.</p>
-          </div>
+        <div className="flex justify-end">
           <div className="flex flex-wrap gap-2">
             {selectedTransactions.length > 0 && (
               <button 

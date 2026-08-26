@@ -7,10 +7,10 @@ import { ROLE_LABELS } from './roleLabels'
 // (one even had a hardcoded external placeholder photo), different default
 // name/role fallbacks, and different icon sets. This is the one header used
 // by all three now; per-role differences (settings icon, live clock) are
-// just props. No page title here — every page already renders its own
-// (with a page-specific icon/subtitle), so this stays a slim, fixed-height
-// bar to keep header height and content spacing identical across pages.
-function PortalHeader({ role = 'staff', showDateTime = false, showSettings = false }) {
+// just props. The current page's name/subtitle is passed in as `title`/
+// `subtitle` (each layout derives these from the route) so it shows once,
+// here, instead of every page re-rendering its own heading.
+function PortalHeader({ role = 'staff', showDateTime = false, showSettings = false, title, subtitle }) {
   const navigate = useNavigate()
   // Derived directly from role + storage rather than effect-synced state —
   // both reads are synchronous and only relevant at render time.
@@ -25,7 +25,16 @@ function PortalHeader({ role = 'staff', showDateTime = false, showSettings = fal
 
   return (
     <header className="h-16 bg-white border-b border-[#c6c6cd] px-4 lg:px-6 flex items-center sticky top-0 z-30">
-      <div className="flex items-center justify-end gap-4 w-full">
+      <div className="flex items-center justify-between gap-4 w-full">
+        <div className="min-w-0">
+          {title && (
+            <h1 className="text-base lg:text-lg font-bold text-[#0b1c30] leading-tight truncate">{title}</h1>
+          )}
+          {subtitle && (
+            <p className="hidden sm:block text-xs text-[#45464d] leading-tight truncate">{subtitle}</p>
+          )}
+        </div>
+
         <div className="flex items-center gap-3 lg:gap-6 flex-shrink-0">
           {showDateTime && (
             <div className="hidden md:block text-right">
