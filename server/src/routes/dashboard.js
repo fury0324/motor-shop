@@ -14,6 +14,12 @@ function monthsAgoDateString(months) {
   return d.toISOString().split('T')[0]
 }
 
+function daysAgoDateString(days) {
+  const d = new Date()
+  d.setDate(d.getDate() - days)
+  return d.toISOString().split('T')[0]
+}
+
 function toDate(value) {
   if (!value) return null
   if (value instanceof Timestamp) return value.toDate()
@@ -24,36 +30,73 @@ function toDate(value) {
 // Extracted so the AI Assistant's get_dashboard_summary tool (server/src/aiTools.js)
 // can reuse the exact same aggregation logic instead of duplicating it.
 export async function getDashboardStats(db) {
-  const [transactionsSnap, customersCountSnap, activeUsersCountSnap, inventorySnap, recentCustomersSnap] =
+  const [transactionsSnap, customersCountSnap, activeUsersCountSnap, inventorySnap, recentCustomersSnap, installmentPaymentsSnap] =
     await Promise.all([
       db.collection('transactions').orderBy('createdAt', 'desc').get(),
       db.collection('customers').count().get(),
       db.collection('users').where('status', '==', 'active').count().get(),
       db.collection('inventory').get(),
       db.collection('customers').orderBy('createdAt', 'desc').limit(5).get(),
+      db.collectionGroup('installmentPayments').get(),
     ])
 
   const transactions = transactionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  const installmentPayments = installmentPaymentsSnap.docs.map((d) => d.data())
 
   let totalRevenue = 0
   const statusCounts = {}
   const paymentTypeCounts = {}
   const monthlyRevenue = {}
+  const dailyRevenue = {}
   const sixMonthsAgo = monthsAgoDateString(6)
+  const thirtyDaysAgo = daysAgoDateString(29)
+
+  // Income is cash actually collected, not the full sale price recognized
+  // up front: a Cash sale's full price lands on the sale date, an
+  // Installment sale's down payment lands on the sale date, and each later
+  // installment payment (recordPayment in transactions.js) lands on the day
+  // it was actually paid. Note: a payment row only stores its current
+  // cumulative amountPaid/paymentDate, not a history of partial payments,
+  // so a due installment paid across multiple days lands entirely on the
+  // date of its most recent payment.
+  function addCollectedAmount(dateStr, amount) {
+    if (!dateStr || !(amount > 0)) return
+    totalRevenue += amount
+    if (dateStr >= sixMonthsAgo) {
+      const key = monthKey(dateStr)
+      if (!monthlyRevenue[key]) monthlyRevenue[key] = { revenue: 0, transactions_count: 0 }
+      monthlyRevenue[key].revenue += amount
+      monthlyRevenue[key].transactions_count += 1
+    }
+    if (dateStr >= thirtyDaysAgo) {
+      dailyRevenue[dateStr] = (dailyRevenue[dateStr] || 0) + amount
+    }
+  }
 
   for (const t of transactions) {
     statusCounts[t.status] = (statusCounts[t.status] || 0) + 1
     if (t.paymentType) paymentTypeCounts[t.paymentType] = (paymentTypeCounts[t.paymentType] || 0) + 1
 
     if (t.status === 'Completed') {
-      totalRevenue += Number(t.sellingPrice) || 0
-      if (t.transactionDate && t.transactionDate >= sixMonthsAgo) {
-        const key = monthKey(t.transactionDate)
-        if (!monthlyRevenue[key]) monthlyRevenue[key] = { revenue: 0, transactions_count: 0 }
-        monthlyRevenue[key].revenue += Number(t.sellingPrice) || 0
-        monthlyRevenue[key].transactions_count += 1
-      }
+      const collectedOnSaleDate = t.paymentType === 'Installment'
+        ? Number(t.downPayment) || 0
+        : Number(t.sellingPrice) || 0
+      addCollectedAmount(t.transactionDate, collectedOnSaleDate)
     }
+  }
+
+  for (const p of installmentPayments) {
+    addCollectedAmount(p.paymentDate, Number(p.amountPaid) || 0)
+  }
+
+  // Fill in every day of the trailing 30-day window (including zero-revenue
+  // days) so the daily income chart renders a continuous series.
+  const dailyRevenueSeries = []
+  for (let i = 29; i >= 0; i -= 1) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    const key = d.toISOString().split('T')[0]
+    dailyRevenueSeries.push({ date: key, revenue: dailyRevenue[key] || 0 })
   }
 
   const completedCount = statusCounts['Completed'] || 0
@@ -110,6 +153,7 @@ export async function getDashboardStats(db) {
     monthly_revenue: Object.entries(monthlyRevenue)
       .sort(([a], [b]) => (a < b ? -1 : 1))
       .map(([month, v]) => ({ month, revenue: v.revenue, transactions_count: v.transactions_count })),
+    daily_revenue: dailyRevenueSeries,
     status_counts: Object.entries(statusCounts).map(([status, count]) => ({ status, count })),
     payment_type_counts: Object.entries(paymentTypeCounts).map(([payment_type, count]) => ({ payment_type, count })),
   }

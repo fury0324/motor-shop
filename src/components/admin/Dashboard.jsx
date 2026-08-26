@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts'
 import { getDashboardStats } from '../../lib/dashboard'
 
 function Dashboard() {
@@ -14,6 +18,7 @@ function Dashboard() {
     low_stock_items: [],
     recent_customers: [],
     monthly_revenue: [],
+    daily_revenue: [],
     status_counts: []
   })
 
@@ -35,6 +40,7 @@ function Dashboard() {
           low_stock_items: [],
           recent_customers: [],
           monthly_revenue: [],
+          daily_revenue: [],
           status_counts: []
         })
       }
@@ -49,6 +55,7 @@ function Dashboard() {
         low_stock_items: [],
         recent_customers: [],
         monthly_revenue: [],
+        daily_revenue: [],
         status_counts: []
       })
     } finally {
@@ -135,6 +142,39 @@ function Dashboard() {
     return colors[color] || 'text-gray-600'
   }
 
+  const formatMonthLabel = (monthStr) => {
+    const [year, month] = monthStr.split('-')
+    return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('en-PH', {
+      month: 'short',
+      year: 'numeric'
+    })
+  }
+
+  const formatDayLabel = (dateStr) => {
+    return new Date(dateStr).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+  }
+
+  const monthlyRevenue = dashboardData.monthly_revenue || []
+  const dailyRevenue = dashboardData.daily_revenue || []
+
+  const monthlyChartData = monthlyRevenue.map((m) => ({
+    month: formatMonthLabel(m.month),
+    revenue: m.revenue
+  }))
+
+  const dailyChartData = dailyRevenue.map((d) => ({
+    date: formatDayLabel(d.date),
+    revenue: d.revenue
+  }))
+
+  const currentMonthEntry = monthlyRevenue[monthlyRevenue.length - 1] || null
+  const previousMonthEntry = monthlyRevenue[monthlyRevenue.length - 2] || null
+  const currentMonthRevenue = currentMonthEntry?.revenue || 0
+  const previousMonthRevenue = previousMonthEntry?.revenue || 0
+  const incomeChangePercent = previousMonthRevenue > 0
+    ? ((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100
+    : (currentMonthRevenue > 0 ? 100 : 0)
+
   if (isLoading) {
     return (
       <div className="p-5 flex justify-center items-center h-64">
@@ -181,6 +221,112 @@ function Dashboard() {
             <h3 className="text-2xl font-bold text-[#0b1c30] mt-1">{stat.value}</h3>
           </div>
         ))}
+      </div>
+
+      {/* Revenue Overview: overall chart + past vs. present income */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6">
+        <div className="lg:col-span-8 bg-white rounded-xl border border-[#c6c6cd] shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-[#c6c6cd]">
+            <h4 className="text-sm font-semibold text-[#0b1c30] flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">monitoring</span>
+              Revenue Overview
+            </h4>
+            <p className="text-xs text-[#76777d] mt-0.5">Monthly revenue trend, last 6 months</p>
+          </div>
+          <div className="p-4">
+            {monthlyChartData.length === 0 ? (
+              <div className="flex items-center justify-center h-[260px] text-gray-400 text-sm">
+                No revenue data yet
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={monthlyChartData}>
+                  <defs>
+                    <linearGradient id="dashboardRevenueGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5eeff" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#76777d' }} axisLine={false} tickLine={false} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#76777d' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(value) => `₱${(value / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    formatter={(value) => formatCurrency(value)}
+                    contentStyle={{ backgroundColor: 'white', border: '1px solid #c6c6cd', borderRadius: '8px', padding: '10px' }}
+                  />
+                  <Area type="monotone" dataKey="revenue" stroke="#2563eb" strokeWidth={2} fill="url(#dashboardRevenueGradient)" name="Revenue" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        <div className="lg:col-span-4 flex flex-col gap-4">
+          <div className="bg-white rounded-xl border border-[#c6c6cd] shadow-sm p-5 flex-1">
+            <p className="text-xs font-semibold tracking-wide text-[#45464d] uppercase">Present Income</p>
+            <p className="text-[10px] text-[#76777d] mt-0.5">{currentMonthEntry ? formatMonthLabel(currentMonthEntry.month) : 'This month'}</p>
+            <h3 className="text-2xl font-bold text-[#0b1c30] mt-2">{formatCurrency(currentMonthRevenue)}</h3>
+            <p className={`text-xs font-medium mt-1 flex items-center gap-1 ${incomeChangePercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <span className="material-symbols-outlined text-sm">
+                {incomeChangePercent >= 0 ? 'trending_up' : 'trending_down'}
+              </span>
+              {incomeChangePercent >= 0 ? '+' : ''}{incomeChangePercent.toFixed(1)}% vs. past month
+            </p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-[#c6c6cd] shadow-sm p-5 flex-1">
+            <p className="text-xs font-semibold tracking-wide text-[#45464d] uppercase">Past Income</p>
+            <p className="text-[10px] text-[#76777d] mt-0.5">{previousMonthEntry ? formatMonthLabel(previousMonthEntry.month) : 'Last month'}</p>
+            <h3 className="text-2xl font-bold text-[#0b1c30] mt-2">{formatCurrency(previousMonthRevenue)}</h3>
+          </div>
+        </div>
+      </div>
+
+      {/* Daily Income */}
+      <div className="bg-white rounded-xl border border-[#c6c6cd] shadow-sm overflow-hidden mb-6">
+        <div className="p-4 border-b border-[#c6c6cd]">
+          <h4 className="text-sm font-semibold text-[#0b1c30] flex items-center gap-2">
+            <span className="material-symbols-outlined text-base">calendar_view_day</span>
+            Daily Income
+          </h4>
+          <p className="text-xs text-[#76777d] mt-0.5">Last 30 days</p>
+        </div>
+        <div className="p-4">
+          {dailyChartData.length === 0 ? (
+            <div className="flex items-center justify-center h-[220px] text-gray-400 text-sm">
+              No daily income data yet
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={dailyChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5eeff" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: '#76777d' }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval={2}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#76777d' }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(value) => `₱${(value / 1000).toFixed(0)}k`}
+                />
+                <Tooltip
+                  formatter={(value) => formatCurrency(value)}
+                  contentStyle={{ backgroundColor: 'white', border: '1px solid #c6c6cd', borderRadius: '8px', padding: '10px' }}
+                />
+                <Bar dataKey="revenue" fill="#2563eb" radius={[3, 3, 0, 0]} name="Income" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
