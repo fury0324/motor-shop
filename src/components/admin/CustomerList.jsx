@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import Swal from '../../lib/swal'
 import { watchCustomers, updateCustomer, deleteCustomer } from '../../lib/customers'
+import AddressMapView from '../shared/AddressMapView'
 
 const formatTimestamp = (value) => {
   if (!value) return null
@@ -389,6 +390,14 @@ function CustomerList() {
                   <div className="md:col-span-2">
                     <label className="text-xs font-semibold text-[#45464d]">Home Address</label>
                     <p className="text-sm text-[#0b1c30] mt-1">{selectedCustomer.homeAddress || '—'}</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-semibold text-[#45464d] mb-1 block">Map Location</label>
+                    <AddressMapView
+                      lat={selectedCustomer.homeLat}
+                      lng={selectedCustomer.homeLng}
+                      label={selectedCustomer.fullName}
+                    />
                   </div>
                 </div>
               </div>

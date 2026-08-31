@@ -2,15 +2,34 @@
 import { useState, useEffect } from 'react';
 import {
   AreaChart, Area, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, PieChart, Pie, Cell
 } from 'recharts';
-import { getPredictiveAnalysis } from '../../lib/dashboard';
+import { getPredictiveAnalysis, getPredictiveAiInsights } from '../../lib/dashboard';
 
 function PredictiveDashboard() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null);
+
+  const [aiInsight, setAiInsight] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(null);
+
+  const fetchAiInsights = async () => {
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const result = await getPredictiveAiInsights();
+      setAiInsight(result?.insight || '');
+    } catch (err) {
+      console.error('Error fetching AI insights:', err);
+      setAiError(err.message || 'Could not generate AI insights.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const fetchPredictiveData = async () => {
     setLoading(true);
@@ -141,6 +160,38 @@ function PredictiveDashboard() {
   const prediction = data?.next_month_prediction || null;
   const productPredictions = data?.top_products_prediction || [];
 
+  // Daily Sale — last 30 calendar days
+  const dailySalesData = (data?.daily_sales || []).map(item => ({
+    date: item.date,
+    label: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    revenue: parseFloat(item.total_revenue) || 0,
+  }));
+
+  // Past vs Present — this month vs last month
+  const monthLabel = (monthKey) => {
+    if (!monthKey) return '';
+    const [year, month] = monthKey.split('-');
+    return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  };
+  const pastVsPresentData = data?.past_vs_present ? [
+    {
+      label: 'Last Month',
+      sublabel: monthLabel(data.past_vs_present.last_month?.month),
+      revenue: parseFloat(data.past_vs_present.last_month?.total_revenue) || 0,
+    },
+    {
+      label: 'This Month',
+      sublabel: monthLabel(data.past_vs_present.this_month?.month),
+      revenue: parseFloat(data.past_vs_present.this_month?.total_revenue) || 0,
+    },
+  ] : [];
+
+  // Overall Sale — motorcycle vs parts revenue split
+  const revenueSplitData = data?.revenue_split ? [
+    { name: 'Motorcycles', value: parseFloat(data.revenue_split.motorcycle) || 0, color: '#2563eb' },
+    { name: 'Parts', value: parseFloat(data.revenue_split.parts) || 0, color: '#93c5fd' },
+  ].filter(item => item.value > 0) : [];
+
   return (
     <div className="p-4 sm:p-5">
       {/* Header Section */}
@@ -152,6 +203,85 @@ function PredictiveDashboard() {
           <span className="material-symbols-outlined text-sm">refresh</span>
           Refresh
         </button>
+      </div>
+
+      {/* ============ TOP CHARTS: Daily Sale / Past vs Present / Overall Sale ============ */}
+      <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Daily Sale */}
+        <div className="bg-white border border-[#c6c6cd] rounded-xl shadow-sm p-4">
+          <h4 className="text-sm font-semibold text-[#0b1c30]">Daily Sale</h4>
+          <p className="text-xs text-[#76777d] mb-2">Last 30 days</p>
+          {dailySalesData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={dailySalesData}>
+                <defs>
+                  <linearGradient id="dailyGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5eeff" vertical={false}/>
+                <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#76777d' }} axisLine={false} tickLine={false} interval={4}/>
+                <YAxis tick={{ fontSize: 9, fill: '#76777d' }} axisLine={false} tickLine={false} tickFormatter={(v) => `₱${(v/1000).toFixed(0)}k`}/>
+                <Tooltip formatter={(value) => formatCurrency(value)} contentStyle={{ backgroundColor: 'white', border: '1px solid #c6c6cd', borderRadius: '8px', fontSize: '12px' }}/>
+                <Area type="monotone" dataKey="revenue" stroke="#2563eb" strokeWidth={2} fill="url(#dailyGradient)" name="Revenue"/>
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center text-sm text-[#45464d]">No data available</div>
+          )}
+        </div>
+
+        {/* Past vs Present */}
+        <div className="bg-white border border-[#c6c6cd] rounded-xl shadow-sm p-4">
+          <h4 className="text-sm font-semibold text-[#0b1c30]">Past vs Present Sale</h4>
+          <p className="text-xs text-[#76777d] mb-2">This month vs last month</p>
+          {pastVsPresentData.some(d => d.revenue > 0) ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={pastVsPresentData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5eeff" vertical={false}/>
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#76777d' }} axisLine={false} tickLine={false}/>
+                <YAxis tick={{ fontSize: 9, fill: '#76777d' }} axisLine={false} tickLine={false} tickFormatter={(v) => `₱${(v/1000).toFixed(0)}k`}/>
+                <Tooltip
+                  formatter={(value) => formatCurrency(value)}
+                  labelFormatter={(label, payload) => payload?.[0]?.payload?.sublabel || label}
+                  contentStyle={{ backgroundColor: 'white', border: '1px solid #c6c6cd', borderRadius: '8px', fontSize: '12px' }}
+                />
+                <Bar dataKey="revenue" name="Revenue" fill="#2563eb" radius={[6, 6, 0, 0]}/>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center text-sm text-[#45464d]">No data available</div>
+          )}
+        </div>
+
+        {/* Overall Sale */}
+        <div className="bg-white border border-[#c6c6cd] rounded-xl shadow-sm p-4">
+          <h4 className="text-sm font-semibold text-[#0b1c30]">Overall Sale</h4>
+          <p className="text-xs text-[#76777d] mb-2">Motorcycles vs Parts revenue</p>
+          {revenueSplitData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie
+                  data={revenueSplitData}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={45}
+                  outerRadius={75}
+                  paddingAngle={2}
+                >
+                  {revenueSplitData.map((entry, index) => (
+                    <Cell key={index} fill={entry.color}/>
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => formatCurrency(value)} contentStyle={{ backgroundColor: 'white', border: '1px solid #c6c6cd', borderRadius: '8px', fontSize: '12px' }}/>
+                <Legend wrapperStyle={{ fontSize: '11px' }}/>
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center text-sm text-[#45464d]">No data available</div>
+          )}
+        </div>
       </div>
 
       {/* ============ NEXT MONTH PREDICTION — KPI CARDS ============ */}
@@ -214,6 +344,65 @@ function PredictiveDashboard() {
           </p>
         </div>
       )}
+
+      {/* ============ AI INSIGHTS ============ */}
+      <div className="mb-6 bg-white border border-[#c6c6cd] rounded-xl p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-black text-3xl">auto_awesome</span>
+            <div>
+              <h4 className="text-base font-semibold text-[#0b1c30]">AI Insights</h4>
+              <p className="text-sm text-[#45464d]">Narrative summary and recommendations from the AI Assistant</p>
+            </div>
+          </div>
+          {!aiLoading && (
+            <button
+              onClick={fetchAiInsights}
+              className="px-4 py-2 bg-black text-white rounded-lg text-xs font-semibold hover:opacity-90 transition-colors flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-sm">auto_awesome</span>
+              {aiInsight ? 'Regenerate' : 'Generate AI Insights'}
+            </button>
+          )}
+        </div>
+
+        {aiLoading && (
+          <div className="flex items-center gap-3 mt-4 text-sm text-[#45464d]">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-black"></div>
+            Generating insights...
+          </div>
+        )}
+
+        {!aiLoading && aiError && (
+          <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+            {aiError}
+          </div>
+        )}
+
+        {!aiLoading && !aiError && aiInsight && (
+          <div className="mt-4 text-sm text-[#0b1c30] space-y-1.5">
+            {aiInsight.split('\n').map((line, i) => {
+              const trimmed = line.trim();
+              if (!trimmed) return null;
+              if (trimmed.startsWith('-') || trimmed.startsWith('•')) {
+                return (
+                  <div key={i} className="flex items-start gap-2 pl-1">
+                    <span className="text-[#76777d] mt-0.5">•</span>
+                    <span>{trimmed.replace(/^[-•]\s*/, '')}</span>
+                  </div>
+                );
+              }
+              return <p key={i}>{trimmed}</p>;
+            })}
+          </div>
+        )}
+
+        {!aiLoading && !aiError && !aiInsight && (
+          <p className="text-sm text-[#76777d] mt-4">
+            Generate an AI-written summary and recommendations based on the data above.
+          </p>
+        )}
+      </div>
 
       {/* ============ TOP PRODUCTS PREDICTION ============ */}
       {productPredictions.length > 0 && (

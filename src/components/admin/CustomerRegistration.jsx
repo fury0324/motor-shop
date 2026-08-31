@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Swal from '../../lib/swal'
 import { useCurrentUser } from '../../lib/useCurrentUser'
 import { newCustomerId, uploadCustomerFile, createCustomer } from '../../lib/customers'
+import AddressMapPicker from '../shared/AddressMapPicker'
 
 function CustomerRegistration() {
   const [currentStep, setCurrentStep] = useState(1)
@@ -12,6 +13,8 @@ function CustomerRegistration() {
     contactNumber: '',
     email: '',
     homeAddress: '',
+    homeLat: null,
+    homeLng: null,
     birthDate: '',
     civilStatus: '',
     occupation: '',
@@ -201,6 +204,8 @@ function CustomerRegistration() {
         contactNumber: personalInfo.contactNumber,
         email: personalInfo.email,
         homeAddress: personalInfo.homeAddress,
+        homeLat: personalInfo.homeLat,
+        homeLng: personalInfo.homeLng,
         birthDate: personalInfo.birthDate,
         civilStatus: personalInfo.civilStatus,
         occupation: personalInfo.occupation,
@@ -237,6 +242,8 @@ function CustomerRegistration() {
         contactNumber: '',
         email: '',
         homeAddress: '',
+        homeLat: null,
+        homeLng: null,
         birthDate: '',
         civilStatus: '',
         occupation: '',
@@ -329,6 +336,8 @@ function CustomerRegistration() {
                       contactNumber: '',
                       email: '',
                       homeAddress: '',
+                      homeLat: null,
+                      homeLng: null,
                       birthDate: '',
                       civilStatus: '',
                       occupation: '',
@@ -494,13 +503,21 @@ function CustomerRegistration() {
                 </div>
                 <div className="md:col-span-2 flex flex-col gap-1">
                   <label className="text-xs font-semibold text-[#45464d]">Complete Home Address *</label>
-                  <textarea 
+                  <textarea
                     name="homeAddress"
-                    className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none transition-all" 
+                    className="w-full px-3 py-2 border border-[#c6c6cd] rounded-lg text-sm focus:border-black focus:ring-2 focus:ring-black/10 outline-none transition-all"
                     placeholder="Street, Barangay, City, Province"
                     rows="3"
                     value={personalInfo.homeAddress}
                     onChange={handlePersonalInfoChange}
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <AddressMapPicker
+                    address={personalInfo.homeAddress}
+                    lat={personalInfo.homeLat}
+                    lng={personalInfo.homeLng}
+                    onChange={(lat, lng) => setPersonalInfo(prev => ({ ...prev, homeLat: lat, homeLng: lng }))}
                   />
                 </div>
               </div>
@@ -818,6 +835,8 @@ function CustomerRegistration() {
                   contactNumber: '',
                   email: '',
                   homeAddress: '',
+                  homeLat: null,
+                  homeLng: null,
                   birthDate: '',
                   civilStatus: '',
                   occupation: '',
