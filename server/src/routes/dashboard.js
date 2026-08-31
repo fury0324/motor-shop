@@ -1,6 +1,8 @@
 import { Router } from 'express'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
-import { assertStaffOrAbove, assertAdmin, callable } from '../shared.js'
+import { assertStaffOrAbove, assertAdmin, callable, HttpsError } from '../shared.js'
+import { chatCompletion } from '../openrouter.js'
+import { aiRateLimiter } from '../aiRateLimit.js'
 
 const router = Router()
 
@@ -175,10 +177,7 @@ function dayOfWeekName(dateStr) {
   return DAY_NAMES[(jsDay + 6) % 7]
 }
 
-router.post('/getPredictiveAnalysis', callable(async (request) => {
-  assertAdmin(request.auth)
-  const db = getFirestore()
-
+async function buildPredictiveAnalysis(db) {
   const [transactionsSnap, partsTransactionsSnap, inventorySnap, customersSnap, installmentPaymentsSnap] =
     await Promise.all([
       db.collection('transactions').where('status', '==', 'Completed').get(),
@@ -193,6 +192,38 @@ router.post('/getPredictiveAnalysis', callable(async (request) => {
   const inventory = inventorySnap.docs.map((d) => ({ id: d.id, ...d.data() }))
   const customers = customersSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
   const installmentPayments = installmentPaymentsSnap.docs.map((d) => d.data())
+
+  // Actual calendar-day totals (not day-of-week buckets) for the last 30
+  // days, combining motorcycle + parts sales — powers the "Daily Sale"
+  // chart on the Predictions page.
+  const thirtyOneDaysAgo = daysAgoDateString(30)
+  const dailySalesByDate = {}
+  for (const t of transactions) {
+    if (!t.transactionDate || t.transactionDate < thirtyOneDaysAgo) continue
+    const key = t.transactionDate.slice(0, 10)
+    if (!dailySalesByDate[key]) dailySalesByDate[key] = { revenue: 0, transactions: 0 }
+    dailySalesByDate[key].revenue += Number(t.sellingPrice) || 0
+    dailySalesByDate[key].transactions += 1
+  }
+  for (const t of partsTransactions) {
+    if (!t.transactionDate || t.transactionDate < thirtyOneDaysAgo) continue
+    const key = t.transactionDate.slice(0, 10)
+    if (!dailySalesByDate[key]) dailySalesByDate[key] = { revenue: 0, transactions: 0 }
+    dailySalesByDate[key].revenue += Number(t.totalAmount) || 0
+    dailySalesByDate[key].transactions += 1
+  }
+  const dailySales = []
+  for (let i = 29; i >= 0; i -= 1) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    const key = d.toISOString().split('T')[0]
+    const bucket = dailySalesByDate[key]
+    dailySales.push({
+      date: key,
+      total_revenue: Math.round((bucket?.revenue || 0) * 100) / 100,
+      total_transactions: bucket?.transactions || 0,
+    })
+  }
 
   const sixMonthsAgo = monthsAgoDateString(6)
   const motoByMonth = {}
@@ -433,7 +464,16 @@ router.post('/getPredictiveAnalysis', callable(async (request) => {
   })()
 
   let nextMonthPrediction
-  const monthsCount = motorcycleSales.length + partsSales.length
+  // Union of months either category actually sold in — motoByMonth/
+  // partsByMonth are built above from the same >= sixMonthsAgo filter as
+  // motorcycleSales/partsSales. Using the union (not
+  // motorcycleSales.length + partsSales.length) avoids double-counting a
+  // month that had both motorcycle and parts sales.
+  const mergedMonthKeys = Array.from(new Set([...Object.keys(motoByMonth), ...Object.keys(partsByMonth)])).sort()
+  const mergedRevenueSeries = mergedMonthKeys.map(
+    (k) => (motoByMonth[k]?.total_revenue || 0) + (partsByMonth[k]?.total_revenue || 0)
+  )
+  const monthsCount = mergedMonthKeys.length
   if (monthsCount === 0) {
     nextMonthPrediction = {
       predicted_revenue: 0, avg_monthly_revenue: 0, trend_percentage: 0,
@@ -441,16 +481,26 @@ router.post('/getPredictiveAnalysis', callable(async (request) => {
       next_month: nextMonthName, message: 'Not enough data for prediction',
     }
   } else {
-    const totalRevenue = motorcycleSales.reduce((s, m) => s + m.total_revenue, 0) + partsSales.reduce((s, m) => s + m.total_revenue, 0)
+    const totalRevenue = mergedRevenueSeries.reduce((s, v) => s + v, 0)
     const avgMonthlyRevenue = totalRevenue / monthsCount
 
+    // Least-squares trend line over every available month (x = month index)
+    // instead of comparing just the first 3 vs last 3 motorcycle-only
+    // months — uses all the data, includes parts revenue, and still
+    // degrades sensibly with only 2-3 months on hand.
     let trend = 0
-    if (motorcycleSales.length >= 2) {
-      const recent = motorcycleSales.slice(-3)
-      const previous = motorcycleSales.slice(0, 3)
-      const recentAvg = recent.reduce((s, m) => s + m.total_revenue, 0) / recent.length
-      const previousAvg = previous.reduce((s, m) => s + m.total_revenue, 0) / previous.length
-      if (previousAvg > 0) trend = ((recentAvg - previousAvg) / previousAvg) * 100
+    let predictedRevenue = avgMonthlyRevenue
+    if (monthsCount >= 2) {
+      const n = monthsCount
+      const sumX = mergedRevenueSeries.reduce((s, _, i) => s + i, 0)
+      const sumY = totalRevenue
+      const sumXY = mergedRevenueSeries.reduce((s, v, i) => s + i * v, 0)
+      const sumXX = mergedRevenueSeries.reduce((s, _, i) => s + i * i, 0)
+      const denominator = n * sumXX - sumX * sumX
+      const slope = denominator !== 0 ? (n * sumXY - sumX * sumY) / denominator : 0
+      const intercept = (sumY - slope * sumX) / n
+      predictedRevenue = Math.max(0, slope * n + intercept)
+      if (avgMonthlyRevenue > 0) trend = (slope / avgMonthlyRevenue) * 100
     }
 
     const totalTransactions = motorcycleSales.reduce((s, m) => s + m.total_transactions, 0)
@@ -464,8 +514,22 @@ router.post('/getPredictiveAnalysis', callable(async (request) => {
       confidence = { level: 'High', score: 85, message: 'Sufficient data for reliable prediction' }
     }
 
+    // Enough months/transactions doesn't mean the trend is trustworthy if
+    // revenue swings wildly month to month — downgrade confidence a tier
+    // when the coefficient of variation is high, rather than letting a
+    // volatile series claim High confidence just because it's old enough.
+    const variance = mergedRevenueSeries.reduce((s, v) => s + (v - avgMonthlyRevenue) ** 2, 0) / monthsCount
+    const coefficientOfVariation = avgMonthlyRevenue > 0 ? Math.sqrt(variance) / avgMonthlyRevenue : 0
+    if (coefficientOfVariation > 0.75) {
+      if (confidence.level === 'High') {
+        confidence = { level: 'Medium', score: 55, message: 'Revenue varies a lot month to month — moderate confidence despite sufficient history' }
+      } else if (confidence.level === 'Medium') {
+        confidence = { level: 'Low', score: 25, message: 'Revenue varies a lot month to month — low confidence in this projection' }
+      }
+    }
+
     nextMonthPrediction = {
-      predicted_revenue: Math.round(avgMonthlyRevenue * (1 + trend / 100) * 100) / 100,
+      predicted_revenue: Math.round(predictedRevenue * 100) / 100,
       avg_monthly_revenue: Math.round(avgMonthlyRevenue * 100) / 100,
       trend_percentage: Math.round(trend * 100) / 100,
       confidence: confidence.level,
@@ -476,6 +540,10 @@ router.post('/getPredictiveAnalysis', callable(async (request) => {
     }
   }
 
+  // Ties each product's projection to the same real, computed shop-wide
+  // trend instead of an arbitrary flat +10% assumption applied to every
+  // product regardless of what the data shows.
+  const shopTrendPercentage = nextMonthPrediction.trend_percentage || 0
   const topProductsPrediction = inventory
     .filter((item) => item.category === 'Motorcycle')
     .map((item) => {
@@ -498,14 +566,41 @@ router.post('/getPredictiveAnalysis', callable(async (request) => {
     .filter((item) => item.total_sold > 0)
     .sort((a, b) => b.monthly_sales_velocity - a.monthly_sales_velocity)
     .slice(0, 3)
-    .map((product) => ({
-      ...product,
-      predicted_next_month_sales: Math.round(product.monthly_sales_velocity * 1.1 * 10) / 10,
-      predicted_next_month_revenue: Math.round(product.monthly_sales_velocity * 1.1 * product.avg_price * 100) / 100,
-    }))
+    .map((product) => {
+      const predictedSales = Math.max(0, product.monthly_sales_velocity * (1 + shopTrendPercentage / 100))
+      return {
+        ...product,
+        predicted_next_month_sales: Math.round(predictedSales * 10) / 10,
+        predicted_next_month_revenue: Math.round(predictedSales * product.avg_price * 100) / 100,
+      }
+    })
 
   const motorcycleRevenue = motorcycleSales.reduce((s, m) => s + m.total_revenue, 0)
   const partsRevenue = partsSales.reduce((s, m) => s + m.total_revenue, 0)
+
+  // "This month vs last month" — reuses the monthly buckets already built
+  // above (motoByMonth/partsByMonth cover the last 6 months, which always
+  // includes both). Powers the "Past vs Present" chart.
+  const monthTotal = (key) => ({
+    month: key,
+    total_revenue: (motoByMonth[key]?.total_revenue || 0) + (partsByMonth[key]?.total_revenue || 0),
+    total_transactions: (motoByMonth[key]?.total_transactions || 0) + (partsByMonth[key]?.total_transactions || 0),
+  })
+  const now = new Date()
+  const thisMonthKey = now.toISOString().slice(0, 7)
+  const lastMonthKey = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7)
+  const pastVsPresent = {
+    last_month: monthTotal(lastMonthKey),
+    this_month: monthTotal(thisMonthKey),
+  }
+
+  // Motorcycle vs Parts share of total revenue — powers the "Overall Sale"
+  // pie chart.
+  const revenueSplit = {
+    motorcycle: Math.round(motorcycleRevenue * 100) / 100,
+    parts: Math.round(partsRevenue * 100) / 100,
+  }
+
   const summaryMonthsCount = Math.max(motorcycleSales.length, partsSales.length)
   const summary = {
     total_revenue_last_6months: motorcycleRevenue + partsRevenue,
@@ -520,6 +615,9 @@ router.post('/getPredictiveAnalysis', callable(async (request) => {
 
   return {
     collected_at: new Date().toISOString(),
+    daily_sales: dailySales,
+    past_vs_present: pastVsPresent,
+    revenue_split: revenueSplit,
     motorcycle_sales: motorcycleSales,
     parts_sales: partsSales,
     inventory_status: inventoryStatus,
@@ -533,6 +631,67 @@ router.post('/getPredictiveAnalysis', callable(async (request) => {
     top_products_prediction: topProductsPrediction,
     summary,
   }
+}
+
+router.post('/getPredictiveAnalysis', callable(async (request) => {
+  assertAdmin(request.auth)
+  const db = getFirestore()
+  return buildPredictiveAnalysis(db)
+}))
+
+const INSIGHTS_SYSTEM_PROMPT =
+  'You are a business analyst for Euro Motor Shop, a motorcycle dealership. ' +
+  'You will be given a JSON snapshot of the shop\'s recent sales, inventory, ' +
+  'and forecast data. Write a short (2-3 sentence) plain-language summary of ' +
+  'the current trend, followed by 3-4 concise, concrete, actionable ' +
+  'recommendations (restocking, promotions, things to watch). Base every ' +
+  'claim strictly on the numbers provided — never invent a figure that ' +
+  'isn\'t in the data. If the forecast\'s confidence is Low or Medium, say ' +
+  'so plainly and hedge your recommendations accordingly instead of stating ' +
+  'the prediction as if it were certain.'
+
+const MAX_INSIGHTS_PROMPT_CHARS = 6000
+
+function buildInsightsPrompt(analysis) {
+  const snapshot = {
+    next_month_prediction: analysis.next_month_prediction,
+    summary: analysis.summary,
+    top_products: analysis.top_products?.slice(0, 3) || [],
+    low_stock_alerts: (analysis.low_stock_alerts || [])
+      .filter((item) => item.alert_level === 'Critical')
+      .slice(0, 3),
+    seasonal_patterns: analysis.seasonal_patterns?.slice(0, 3) || [],
+    daily_patterns: analysis.daily_patterns || [],
+  }
+  return JSON.stringify(snapshot).slice(0, MAX_INSIGHTS_PROMPT_CHARS)
+}
+
+router.post('/getPredictiveAiInsights', aiRateLimiter, callable(async (request) => {
+  assertAdmin(request.auth)
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new HttpsError('failed-precondition', 'AI Assistant is not configured yet.')
+  }
+  const db = getFirestore()
+  const analysis = await buildPredictiveAnalysis(db)
+
+  let completion
+  try {
+    completion = await chatCompletion({
+      messages: [
+        { role: 'system', content: INSIGHTS_SYSTEM_PROMPT },
+        { role: 'user', content: buildInsightsPrompt(analysis) },
+      ],
+    })
+  } catch (err) {
+    console.error('OpenRouter request failed:', err)
+    throw new HttpsError('internal', 'Could not reach the AI service.')
+  }
+
+  const text = (completion?.choices?.[0]?.message?.content || '').trim()
+  if (!text) {
+    throw new HttpsError('internal', 'The AI service returned an unexpected response.')
+  }
+  return { insight: text }
 }))
 
 export default router

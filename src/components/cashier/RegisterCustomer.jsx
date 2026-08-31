@@ -3,6 +3,7 @@ import { useState } from 'react'
 import Swal from '../../lib/swal'
 import { useCurrentUser } from '../../lib/useCurrentUser'
 import { newCustomerId, uploadCustomerFile, createCustomer } from '../../lib/customers'
+import AddressMapPicker from '../shared/AddressMapPicker'
 
 function RegisterCustomer() {
   const [currentStep, setCurrentStep] = useState(1)
@@ -13,6 +14,8 @@ function RegisterCustomer() {
     contactNumber: '',
     email: '',
     homeAddress: '',
+    homeLat: null,
+    homeLng: null,
     birthDate: '',
     civilStatus: '',
     occupation: '',
@@ -202,6 +205,8 @@ function RegisterCustomer() {
         contactNumber: personalInfo.contactNumber,
         email: personalInfo.email,
         homeAddress: personalInfo.homeAddress,
+        homeLat: personalInfo.homeLat,
+        homeLng: personalInfo.homeLng,
         birthDate: personalInfo.birthDate,
         civilStatus: personalInfo.civilStatus,
         occupation: personalInfo.occupation,
@@ -237,6 +242,8 @@ function RegisterCustomer() {
         contactNumber: '',
         email: '',
         homeAddress: '',
+        homeLat: null,
+        homeLng: null,
         birthDate: '',
         civilStatus: '',
         occupation: '',
@@ -457,6 +464,14 @@ function RegisterCustomer() {
                     rows="3"
                     value={personalInfo.homeAddress}
                     onChange={handlePersonalInfoChange}
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <AddressMapPicker
+                    address={personalInfo.homeAddress}
+                    lat={personalInfo.homeLat}
+                    lng={personalInfo.homeLng}
+                    onChange={(lat, lng) => setPersonalInfo(prev => ({ ...prev, homeLat: lat, homeLng: lng }))}
                   />
                 </div>
               </div>

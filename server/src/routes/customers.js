@@ -10,13 +10,24 @@ function emailIndexRef(db, email) {
   return db.collection('customerEmails').doc(email.toLowerCase().trim())
 }
 
+// The map pin is optional and staff-entered (search result or manual
+// click/drag) — only accept it if it's actually a valid coordinate pair,
+// otherwise store null rather than persist garbage.
+function normalizeCoordinate(lat, lng) {
+  const numLat = Number(lat)
+  const numLng = Number(lng)
+  if (!Number.isFinite(numLat) || !Number.isFinite(numLng)) return { lat: null, lng: null }
+  if (numLat < -90 || numLat > 90 || numLng < -180 || numLng > 180) return { lat: null, lng: null }
+  return { lat: numLat, lng: numLng }
+}
+
 // Mirrors add-customer.php. The client generates the customer doc ID up front
 // so it can upload KYC documents before calling this function — the
 // resulting URLs are passed in as `documents`/`coMaker.idUrl`.
 router.post('/createCustomer', callable(async (request) => {
   assertStaffOrAbove(request.auth)
   const {
-    customerId, fullName, contactNumber, email, homeAddress, birthDate, civilStatus,
+    customerId, fullName, contactNumber, email, homeAddress, homeLat, homeLng, birthDate, civilStatus,
     occupation, monthlyIncome, documents, coMaker, addedByName, addedByRole,
   } = request.data ?? {}
 
@@ -31,6 +42,7 @@ router.post('/createCustomer', callable(async (request) => {
   const normalizedEmail = String(email).toLowerCase().trim()
   const customerRef = db.collection('customers').doc(customerId)
   const emailRef = emailIndexRef(db, normalizedEmail)
+  const coords = normalizeCoordinate(homeLat, homeLng)
 
   await db.runTransaction(async (tx) => {
     const emailDoc = await tx.get(emailRef)
@@ -44,6 +56,8 @@ router.post('/createCustomer', callable(async (request) => {
       contactNumber,
       email: normalizedEmail,
       homeAddress,
+      homeLat: coords.lat,
+      homeLng: coords.lng,
       birthDate: birthDate || null,
       civilStatus: civilStatus || null,
       occupation: occupation || null,
@@ -66,7 +80,7 @@ router.post('/createCustomer', callable(async (request) => {
 router.post('/updateCustomer', callable(async (request) => {
   assertStaffOrAbove(request.auth)
   const {
-    customerId, fullName, contactNumber, email, homeAddress, birthDate, civilStatus,
+    customerId, fullName, contactNumber, email, homeAddress, homeLat, homeLng, birthDate, civilStatus,
     occupation, monthlyIncome, documents, coMaker,
   } = request.data ?? {}
 
@@ -101,6 +115,11 @@ router.post('/updateCustomer', callable(async (request) => {
     if (fullName) update.fullName = fullName
     if (contactNumber) update.contactNumber = contactNumber
     if (homeAddress) update.homeAddress = homeAddress
+    if (homeLat !== undefined || homeLng !== undefined) {
+      const coords = normalizeCoordinate(homeLat, homeLng)
+      update.homeLat = coords.lat
+      update.homeLng = coords.lng
+    }
     if (birthDate !== undefined) update.birthDate = birthDate || null
     if (civilStatus !== undefined) update.civilStatus = civilStatus || null
     if (occupation !== undefined) update.occupation = occupation || null

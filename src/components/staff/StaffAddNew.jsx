@@ -1,15 +1,12 @@
 // src/components/staff/StaffAddNew.jsx
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Swal from '../../lib/swal'
 import { newInventoryId, uploadInventoryImage, createInventoryItem } from '../../lib/inventory'
-import {
-  X,
-  Upload,
-  Bike,        // ✅ Instead of Motorcycle
-  Wrench
-} from 'lucide-react'
+import { X, Upload } from 'lucide-react'
 
 function StaffAddNew() {
+  const navigate = useNavigate()
   const [addItemType, setAddItemType] = useState(null) // 'model' or 'part'
   const [isAdding, setIsAdding] = useState(false)
   
@@ -216,45 +213,45 @@ function StaffAddNew() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      {!addItemType ? (
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-black text-white p-4 flex justify-between items-center">
+          <h3 className="text-lg font-semibold">
+            {!addItemType ? 'Add New Item' : addItemType === 'model' ? 'Add New Model' : 'Add New Part'}
+          </h3>
+          <button
+            onClick={() => navigate('/staff/inventory')}
+            className="p-1 hover:bg-white/10 rounded-full transition-colors"
+          >
+            <span className="material-symbols-outlined text-base">close</span>
+          </button>
+        </div>
+
+        {!addItemType ? (
         // Step 1: Choose Model or Part
-        <div className="bg-white border border-[#c6c6cd] rounded-xl p-6 shadow-sm">
-          <p className="text-sm text-[#45464d] text-center mb-4">What would you like to add?</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-6 flex flex-col gap-4">
+          <p className="text-sm text-[#45464d] text-center mb-2">What would you like to add?</p>
+          <div className="grid grid-cols-2 gap-4">
             <button
               onClick={() => setAddItemType('model')}
-              className="flex flex-col items-center justify-center p-8 border-2 border-[#c6c6cd] rounded-xl hover:border-black hover:bg-[#f8f9ff] transition-all"
+              className="flex flex-col items-center justify-center p-6 border-2 border-[#c6c6cd] rounded-xl hover:border-black hover:bg-[#f8f9ff] transition-all"
             >
-              <Bike className="w-12 h-12 text-[#0b1c30]" />
-              <span className="mt-3 font-semibold text-[#0b1c30]">Model</span>
-              <span className="text-xs text-[#45464d] text-center mt-1">Motorcycle model with individual units</span>
+              <span className="material-symbols-outlined text-4xl text-[#0b1c30]">motorcycle</span>
+              <span className="mt-2 font-semibold text-[#0b1c30]">Model</span>
+              <span className="text-[10px] text-[#45464d] text-center mt-1">Motorcycle model with individual units</span>
             </button>
             <button
               onClick={() => setAddItemType('part')}
-              className="flex flex-col items-center justify-center p-8 border-2 border-[#c6c6cd] rounded-xl hover:border-black hover:bg-[#f8f9ff] transition-all"
+              className="flex flex-col items-center justify-center p-6 border-2 border-[#c6c6cd] rounded-xl hover:border-black hover:bg-[#f8f9ff] transition-all"
             >
-              <Wrench className="w-12 h-12 text-[#0b1c30]" />
-              <span className="mt-3 font-semibold text-[#0b1c30]">Part</span>
-              <span className="text-xs text-[#45464d] text-center mt-1">Parts with name, quantity, price, and image</span>
+              <span className="material-symbols-outlined text-4xl text-[#0b1c30]">build</span>
+              <span className="mt-2 font-semibold text-[#0b1c30]">Part</span>
+              <span className="text-[10px] text-[#45464d] text-center mt-1">Parts with name, quantity, price, and image</span>
             </button>
           </div>
         </div>
       ) : addItemType === 'model' ? (
         // Add Model Form
-        <form onSubmit={handleAddModel} className="bg-white border border-[#c6c6cd] rounded-xl p-6 shadow-sm">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-[#0b1c30] flex items-center gap-2">
-              <Bike className="w-5 h-5" />
-              Add New Model
-            </h3>
-            <button 
-              type="button" 
-              onClick={() => setAddItemType(null)}
-              className="p-1 hover:text-black transition-colors"
-            >
-              <X className="w-5 h-5 text-[#45464d]" />
-            </button>
-          </div>
+        <form onSubmit={handleAddModel} className="p-6 flex flex-col gap-4">
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
@@ -375,20 +372,7 @@ function StaffAddNew() {
         </form>
       ) : (
         // Add Part Form
-        <form onSubmit={handleAddPart} className="bg-white border border-[#c6c6cd] rounded-xl p-6 shadow-sm">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-[#0b1c30] flex items-center gap-2">
-              <Wrench className="w-5 h-5" />
-              Add New Part
-            </h3>
-            <button 
-              type="button" 
-              onClick={() => setAddItemType(null)}
-              className="p-1 hover:text-black transition-colors"
-            >
-              <X className="w-5 h-5 text-[#45464d]" />
-            </button>
-          </div>
+        <form onSubmit={handleAddPart} className="p-6 flex flex-col gap-4">
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
@@ -522,6 +506,7 @@ function StaffAddNew() {
           </div>
         </form>
       )}
+      </div>
     </div>
   )
 }

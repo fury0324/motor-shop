@@ -583,7 +583,7 @@ function StaffInventory() {
                   const stockStatus = getStockStatus(item.stock || item.quantity || 0)
                   
                   return (
-                    <div key={item.id} className="flex flex-col border border-[#c6c6cd] rounded-xl overflow-hidden hover:shadow-md transition-shadow group bg-white">
+                    <div key={item.id} className="flex flex-col border-2 border-[#c6c6cd] rounded-xl overflow-hidden hover:shadow-md hover:border-black transition-all group bg-white">
                       <div className="aspect-[4/3] bg-[#e5eeff] relative overflow-hidden">
                         {item.imageUrl ? (
                           <img alt={item.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" src={item.imageUrl} />

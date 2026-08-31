@@ -7,3 +7,7 @@ export async function getDashboardStats() {
 export async function getPredictiveAnalysis() {
   return callApi('getPredictiveAnalysis')
 }
+
+export async function getPredictiveAiInsights() {
+  return callApi('getPredictiveAiInsights')
+}

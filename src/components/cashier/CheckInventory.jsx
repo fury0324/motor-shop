@@ -162,7 +162,7 @@ function CheckInventory() {
           {filteredInventory.map((item) => (
             <div
               key={item.id}
-              className="bg-white border border-[#c6c6cd] rounded-xl p-4 shadow-sm hover:shadow-md hover:border-black transition-all"
+              className="bg-white border-2 border-[#c6c6cd] rounded-xl p-4 shadow-sm hover:shadow-md hover:border-black transition-all"
             >
               <div className="flex items-start gap-3">
                 <div className="w-16 h-16 rounded-lg bg-[#e5eeff] overflow-hidden flex-shrink-0">
