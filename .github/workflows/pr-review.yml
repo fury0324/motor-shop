@@ -1,0 +1,35 @@
+# Standalone reference to dashlytix/pr-review-agent, run in parallel with
+# the vendored copy in ai-ci-agent/ (see investigate.yml) rather than
+# replacing it yet. Once outputs from both are compared and this path is
+# trusted, the vendored ai-ci-agent/ directory and investigate.yml can be
+# retired.
+#
+# Requires dashlytix/pr-review-agent to be public (or otherwise
+# accessible to this repo) -- it is currently private, so this workflow
+# will fail to resolve the action until that changes.
+name: PR Review Agent (standalone)
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dashlytix/pr-review-agent@f0126bf389d321b4ff11294ef7f25eb962a17946
+        with:
+          llm-provider: openai
+          llm-base-url: https://openrouter.ai/api/v1
+          llm-api-key: ${{ secrets.LLM_API_KEY }}
+          llm-model: openai/gpt-4o-mini
